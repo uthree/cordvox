@@ -32,11 +32,9 @@ class Cordvox(L.LightningModule):
         loss_stft = multiscale_stft_loss(wf, fake)
 
         if self.discriminator_active:
-            logits_fake, feats_fake = D(fake)
-            logits_real, feats_real = D(wf)
+            logits_fake, _ = D(fake)
             loss_adv = generator_adversarial_loss(logits_fake)
-            loss_feat = feature_matching_loss(feats_real, feats_fake)
-            loss_G = loss_stft + loss_feat + loss_adv
+            loss_G = loss_stft + loss_adv * 2.0
         else:
             loss_G = loss_stft
 
@@ -66,7 +64,6 @@ class Cordvox(L.LightningModule):
             loss_dict = {
                 "MS-STFT": loss_stft.item(),
                 "Generator Adversarial": loss_adv.item(),
-                "Feature Matching": loss_feat.item(),
                 "Discriminator Adversarial": loss_D.item(),
             }
         else:

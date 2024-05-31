@@ -23,11 +23,10 @@ class DiscriminatorS(nn.Module):
         x = x.unsqueeze(1)
         x = self.pool(x)
         x = self.pre(x)
-        x = F.leaky_relu(x, 0.1)
         for c in self.convs:
             fmap.append(x)
-            x = c(x)
             x = F.leaky_relu(x, 0.1)
+            x = c(x)
         return x, fmap
 
 
