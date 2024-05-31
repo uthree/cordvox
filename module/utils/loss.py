@@ -7,7 +7,7 @@ import torchaudio
 def safe_log(x, eps=1e-6):
     return torch.log(x + eps)
 
-@torch.cuda.amp.autocast(enabled=False)
+
 def multiscale_stft_loss(x, y, scales=[16, 32, 64, 128, 256, 512]):
     x = x.to(torch.float)
     y = y.to(torch.float)
@@ -58,4 +58,4 @@ def feature_matching_loss(fmap_real, fmap_fake):
         f = f.float()
         r = r.float()
         loss += (f - r).abs().mean()
-    return loss * (2 / n) 
+    return loss * (2 / n)
