@@ -60,7 +60,7 @@ def preprocess(input_path: Path, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=str)
-    parser.add_argument("-c", "--config", type=str, default="config/24k.json")
+    parser.add_argument("-c", "--config", type=str, default="config/v3_24k.json")
     args = parser.parse_args()
     config = load_json_file(args.config)
     
