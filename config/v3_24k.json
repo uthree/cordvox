@@ -10,7 +10,7 @@
     "trainer": {
         "devices": "auto",
         "max_epochs": 10000,
-        "precision": "16-mixed",
+        "precision": "bf16-mixed",
         "log_every_n_steps": 50
     },
     "data_module": {
