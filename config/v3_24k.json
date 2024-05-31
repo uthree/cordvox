@@ -27,8 +27,12 @@
             "n_mels": 80,
             "sample_rate": 24000,
             "frame_size": 480,
-            "channels": [384, 192, 96, 48, 24],
-            "factors": [2, 3, 4, 4, 5]
+            "upsample_initial_channels": 256,
+            "resblock_type": "2",
+            "resblock_kernel_sizes": [3, 5, 7],
+            "resblock_dilations": [[1, 2], [2, 6], [3, 12]],
+            "upsample_kernel_sizes": [24, 20, 4, 4],
+            "upsample_rates": [12, 10, 2, 2]
         },
         "discriminator": {
             "mpd": {

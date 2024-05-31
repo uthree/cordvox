@@ -27,7 +27,7 @@ class SaveCheckpoint(L.Callback):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=str, default="config/24k.json")
+    parser.add_argument("-c", "--config", type=str, default="config/v3_24k.json")
     parser.add_argument("-da", "--discriminator-active", type=bool, default=False)
     args = parser.parse_args()
 

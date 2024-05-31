@@ -168,7 +168,9 @@ cython_debug/
 *.ogg
 *.swp
 *.swo
+*.ckpt
 
 backups/*
 lightning_logs/
 dataset_cache
+models/

@@ -18,7 +18,7 @@ import gradio as gr
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=str, default="config/24k.json")
+    parser.add_argument("-c", "--config", type=str, default="config/v3_24k.json")
     parser.add_argument("-d", "--device", default="cpu")
     parser.add_argument("-p", "--pitch-shift", default=0.0, type=float)
     args = parser.parse_args()
