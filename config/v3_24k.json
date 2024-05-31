@@ -31,8 +31,8 @@
             "resblock_type": "2",
             "resblock_kernel_sizes": [3, 5, 7],
             "resblock_dilations": [[1, 2], [2, 6], [3, 12]],
-            "upsample_kernel_sizes": [24, 20, 4, 4],
-            "upsample_rates": [12, 10, 2, 2]
+            "upsample_kernel_sizes": [24, 20, 8],
+            "upsample_rates": [12, 10, 4]
         },
         "discriminator": {
             "msd": {
