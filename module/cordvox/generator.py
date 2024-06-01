@@ -34,9 +34,11 @@ class SineOscillator(nn.Module):
         uv = (f0 >= self.min_frequency).to(torch.float)
         integrated = torch.cumsum(f0 / self.sample_rate, dim=2)
         theta = 2 * math.pi * (integrated % 1)
-        sinusoid = torch.sin(theta) * uv
+        sinusoid = torch.sin(theta)
         sinusoid = sinusoid + torch.randn_like(sinusoid) * self.noise_scale
-        return sinusoid
+        noise = torch.randn_like(sinusoid)
+        source = sinusoid * uv + noise * (1 - uv)
+        return source
 
 
 class ResBlock1(nn.Module):
