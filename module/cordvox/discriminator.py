@@ -33,7 +33,7 @@ class DiscriminatorS(nn.Module):
 class MultiScaleDiscriminator(nn.Module):
     def __init__(
             self,
-            scales=[1, 2, 3],
+            scales=[1, 2, 4],
             channels=32,
             num_layers=4
             ):
