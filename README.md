@@ -2,6 +2,6 @@
 NSF HiFi-GANの学習手法の改善
 
 ## 改善点
-- 損失関数: メルスペクトログラム損失を multi-scale STFT Lossに変更
-- DiscriminatorをMSDのみにする。
-- 2ステージ学習による高効率な学習: 学習初期はDiscriminatorを使用しないことで計算効率を向上。
+- 損失関数: メルスペクトログラム損失を multi-scale STFT Lossに変更。高周波成分も比較できるように。
+- DiscriminatorをMSDのみにする。結局のところ周期性と非周期性を識別できる能力があれば十分。
+- 2ステージ学習による高効率な学習。 学習初期はDiscriminatorを使用しないことで計算効率を向上。

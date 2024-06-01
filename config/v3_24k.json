@@ -36,7 +36,7 @@
         },
         "discriminator": {
             "msd": {
-                "scales": [1, 2, 3],
+                "scales": [1, 2, 4],
                 "channels": 32,
                 "num_layers": 4
             }
