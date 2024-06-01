@@ -43,12 +43,18 @@ if __name__ == "__main__":
     to_mel = LogMelSpectrogram(sample_rate, n_fft, frame_size, n_mels).to(device)
 
     @torch.inference_mode()
-    def convert(input_audio):
+    def convert(input_audio, pitch_shift, unvoiced):
         input_sr, input_wf = input_audio
         input_wf = torch.from_numpy(input_wf).unsqueeze(0).to(device).to(torch.float) / 32768.0
         input_wf = resample(input_wf, input_sr, sample_rate).to(device)
 
         f0 = estimate_f0(input_wf, sample_rate, frame_size, pe_algorithm)
+        pitch = torch.log2(f0 / 440 + 1e-6) * 12.0
+        pitch += pitch_shift
+        f0 = 440 * 2 ** (pitch / 12.0)
+        if unvoiced:
+            f0[:] = 0
+
         mel = to_mel(input_wf)
         output_wf = generator(mel, f0).squeeze(1)
        
@@ -61,6 +67,8 @@ if __name__ == "__main__":
         convert,
         inputs=[
             gr.Audio(label="Input"),
+            gr.Slider(-24, 24, 0, label="Pitch Shift"),
+            gr.Checkbox(False, label="Unvoiced")
         ],
         outputs=[
             gr.Audio(label="Output")
