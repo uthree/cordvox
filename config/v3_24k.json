@@ -35,8 +35,15 @@
             "upsample_rates": [12, 10, 4]
         },
         "discriminator": {
-            "msd": {
-                "scales": [1, 2, 4],
+            "mpd": {
+                "periods": [1, 2, 3, 5, 7, 11],
+                "channels": 32,
+                "channels_mul": 2,
+                "max_channels": 256,
+                "num_layers": 4
+            },
+            "mrd": {
+                "resolutions": [64, 128, 256],
                 "channels": 32,
                 "num_layers": 4
             }
