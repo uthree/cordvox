@@ -85,7 +85,6 @@ class DiscriminatorR(nn.Module):
             self.convs.append(norm_f(nn.Conv2d(channels, channels, (5, 3), (3, 1), (2, 1))))
         self.post = norm_f(nn.Conv2d(channels, 1, 3, 1, 1))
 
-    @torch.cuda.amp.autocast(enabled=False)
     def spectrogram(self, x):
         # spectrogram
         w = torch.hann_window(self.n_fft).to(x.device)
