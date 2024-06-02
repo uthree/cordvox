@@ -21,7 +21,7 @@ class SineOscillator(nn.Module):
             sample_rate=24000,
             frame_size=480,
             min_frequency=20.0,
-            noise_scale=0.01
+            noise_scale=0.03
         ):
         super().__init__()
         self.sample_rate = sample_rate
@@ -35,7 +35,8 @@ class SineOscillator(nn.Module):
         integrated = torch.cumsum(f0 / self.sample_rate, dim=2)
         theta = 2 * math.pi * (integrated % 1)
         sinusoid = torch.sin(theta) * uv + torch.randn_like(theta) * self.noise_scale
-        return sinusoid
+        source = sinusoid * uv + torch.randn_like(theta) * (1 - uv)
+        return source
 
 
 class ResBlock1(nn.Module):
