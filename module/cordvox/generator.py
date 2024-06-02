@@ -21,7 +21,7 @@ class SineOscillator(nn.Module):
             sample_rate=24000,
             frame_size=480,
             min_frequency=20.0,
-            noise_scale=0.05
+            noise_scale=0.02
         ):
         super().__init__()
         self.sample_rate = sample_rate
