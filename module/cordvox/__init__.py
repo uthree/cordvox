@@ -38,7 +38,7 @@ class Cordvox(L.LightningModule):
             logits_real, feats_real = D(wf)
             loss_adv = generator_adversarial_loss(logits_fake)
             loss_feat = feature_matching_loss(feats_real, feats_fake)
-            loss_G = loss_stft + loss_feat + loss_adv
+            loss_G = loss_stft * 45.0 + loss_feat + loss_adv
         else:
             loss_G = loss_stft
 
