@@ -6,3 +6,4 @@ pyworld
 torchfcpe
 lightning
 tensorboard
+tqdm
