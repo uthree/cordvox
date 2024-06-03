@@ -1,34 +1,28 @@
-# cordvox (仮)
-NSF HiFi-GANをベースとした軽量なニューラルボコーダー
+# cordvox
+Unified DSP and HiFi-GAN
 
-## HiFi-GANとの相違点
-通常のHiFi-GANとの相違点について書く。
+# Installation
+```sh
+pip3 install -r requirements.txt
+```
 
-### モデル規模
-軽量化のためにHiFi-GAN V3モデルベースにする。ソース信号を利用するためこの規模でも十分な精度が出るはず。
+# Train
+1. preprocess dataset
+```sh
+python3 preprocess.py /jvs_ver1
+```
 
-### NSFモデルである
-正弦波とガウシアンノイズを入力する。(ソース・フィルタ モデル)  
-仕組み上F0入力が必要だが「ボコーダー」としてはむしろこうするのが自然なのでは。  
-~~CNNによるGANの力だけで音声を生成するほうが無茶をしていると思う。~~  
-基音とその倍音は正弦波に対して畳み込みを適用するだけで倍音成分を簡単に得られるので、NSFモデルにするだけで圧倒的に性能が向上するはず。
-副産物として、ピッチシフト, ささやき声への変換ができる。
+2. run training without discriminator (optional, for fast training)
+```sh
+python3 train.py -nod True
+```
 
-### DSPのようなソースモジュール
-基音と倍音(31倍音まで)とガウシアンノイズの合計32チャンネルをソース信号とする。これらの信号に対して線形システムを適用し線形結合を行うことであらゆる音が再現できる。  
-SiFi-GANのソースネットワークの代替としての機能を期待する。
+3. runt training with discrimonator
+```
+python3 train.py 
+```
 
-### FiLM
-U-Net構造の後半の結合部を加算からFiLMに変更することによって、ソース信号重み付き和のような動作をさせる。これにより実質的に加算シンセサイザのような演算が可能となる。
-
-### 損失関数
-メルスペクトログラム損失を multi-scale STFT Lossに変更。高周波成分も比較できるように。
-高周波成分の振幅の一致を目的関数にできるのでMPDによるFeature Matching Lossの代替となる事を期待。
-
-### Discriminator
-MRD + MPDに変更。
-MRDはUnivNetのもの。振幅スペクトログラムに対して二次元の畳み込みを行う。
-
-### bfloat16による訓練
-モデル設計の工夫ではないが、単純に学習速度が向上、メモリ使用量が約半分になる。
-通常の16ビット浮動小数点数より指数部の桁数が多いため、安定性が高い。
+# Inference
+```sh
+python3 infer_webui
+```

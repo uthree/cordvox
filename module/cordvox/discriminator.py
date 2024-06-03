@@ -75,14 +75,14 @@ class MultiPeriodicDiscriminator(nn.Module):
 
 
 class DiscriminatorR(nn.Module):
-    def __init__(self, resolution=128, channels=32, num_layers=4):
+    def __init__(self, resolution=128, channels=32, num_layers=6):
         super().__init__()
         norm_f = nn.utils.parametrizations.weight_norm
-        self.convs = nn.ModuleList([norm_f(nn.Conv2d(1, channels, (7, 3), (3, 1), (3, 1)))])
+        self.convs = nn.ModuleList([norm_f(nn.Conv2d(1, channels, (7, 3), (1, 1), (3, 1)))])
         self.hop_size = resolution
         self.n_fft = resolution * 4
         for _ in range(num_layers):
-            self.convs.append(norm_f(nn.Conv2d(channels, channels, (5, 3), (3, 1), (2, 1))))
+            self.convs.append(norm_f(nn.Conv2d(channels, channels, (7, 3), (2, 1), (2, 1))))
         self.post = norm_f(nn.Conv2d(channels, 1, 3, 1, 1))
 
     def spectrogram(self, x):
@@ -109,7 +109,7 @@ class MultiResolutionDiscriminator(nn.Module):
             self,
             resolutions=[128, 256, 512],
             channels=32,
-            num_layers=4,
+            num_layers=6,
             ):
         super().__init__()
         self.sub_discs = nn.ModuleList([])

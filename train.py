@@ -28,6 +28,7 @@ class SaveCheckpoint(L.Callback):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=str, default="config/v3_24k.json")
+    parser.add_argument("-nod", "--no-discriminator", type=bool, default=False)
     args = parser.parse_args()
 
     config = load_json_file(args.config)
@@ -42,4 +43,8 @@ if __name__ == "__main__":
         model = Cordvox(config["model"])
 
     dm = VocoderDataModule(**config['data_module'])
+    if args.no_discriminator:
+        model.discriminator_active = False
+    else:
+        model.discriminator_active = True
     trainer.fit(model, dm)
