@@ -21,21 +21,24 @@ class SineOscillator(nn.Module):
             sample_rate=24000,
             frame_size=480,
             min_frequency=20.0,
-            noise_scale=0.03
+            num_harmonics=30,
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.min_frequency = min_frequency
-        self.noise_scale = noise_scale
+        self.num_harmonics = num_harmonics
 
     def forward(self, f0):
         f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
+        mul = (torch.arange(self.num_harmonics+1, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
+        fs = f0 * mul
         uv = (f0 >= self.min_frequency).to(torch.float)
-        integrated = torch.cumsum(f0 / self.sample_rate, dim=2)
+        integrated = torch.cumsum(fs / self.sample_rate, dim=2)
         theta = 2 * math.pi * (integrated % 1)
-        sinusoid = torch.sin(theta) * uv + torch.randn_like(theta) * self.noise_scale
-        source = sinusoid * uv + torch.randn_like(theta) * (1 - uv)
+        sinusoid = torch.sin(theta) * uv
+        noise = torch.randn(theta.shape[0], 1, theta.shape[2], device=theta.device)
+        source = torch.cat([sinusoid, noise], dim=1)
         return source
 
 
@@ -79,6 +82,7 @@ class Generator(nn.Module):
             n_mels=80,
             sample_rate=24000,
             frame_size=480,
+            num_harmonics=30,
             upsample_initial_channels=512,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
@@ -97,9 +101,9 @@ class Generator(nn.Module):
         else:
             raise "invalid resblock type"
 
-        self.oscillator = SineOscillator(sample_rate, frame_size)
+        self.oscillator = SineOscillator(sample_rate, frame_size, num_harmonics=num_harmonics)
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
-        self.source_pre = weight_norm(nn.Conv1d(1, upsample_initial_channels//(2**(self.num_upsamples)), 7, 1, 3))
+        self.source_pre = weight_norm(nn.Conv1d(num_harmonics+2, upsample_initial_channels//(2**(self.num_upsamples)), 7, 1, 3))
         self.ups = nn.ModuleList([])
         downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):

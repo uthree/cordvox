@@ -27,6 +27,7 @@
             "n_mels": 80,
             "sample_rate": 24000,
             "frame_size": 480,
+            "num_harmonics": 30,
             "upsample_initial_channels": 512,
             "resblock_type": "2",
             "resblock_kernel_sizes": [3, 7, 11],
