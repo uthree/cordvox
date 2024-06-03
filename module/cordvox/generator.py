@@ -40,6 +40,18 @@ class SineOscillator(nn.Module):
         noise = torch.randn(theta.shape[0], 1, theta.shape[2], device=theta.device)
         source = torch.cat([sinusoid, noise], dim=1)
         return source
+    
+
+class FiLM(nn.Module):
+    def __init__(self, input_channels, condition_channels):
+        super().__init__()
+        self.to_shift = weight_norm(nn.Conv1d(condition_channels, input_channels, 1))
+        self.to_scale = weight_norm(nn.Conv1d(condition_channels, input_channels, 1))
+
+    def forward(self, x, c):
+        shift = self.to_shift(c)
+        scale = self.to_scale(c)
+        return x * scale + shift
 
 
 class ResBlock1(nn.Module):
@@ -105,6 +117,7 @@ class Generator(nn.Module):
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
         self.source_pre = weight_norm(nn.Conv1d(num_harmonics+2, upsample_initial_channels//(2**(self.num_upsamples)), 7, 1, 3))
         self.ups = nn.ModuleList([])
+        self.films = nn.ModuleList([])
         downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
             c1 = upsample_initial_channels//(2**i)
@@ -112,6 +125,7 @@ class Generator(nn.Module):
             p = (k-u)//2
             self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
             downs.append(weight_norm(nn.Conv1d(c2, c1, k, u, p)))
+            self.films.append(FiLM(c1, c1))
         self.downs = nn.ModuleList(reversed(downs))
         
         self.resblocks = nn.ModuleList()
@@ -121,6 +135,7 @@ class Generator(nn.Module):
                 self.resblocks.append(resblock(ch, k, d))
 
         self.conv_post = weight_norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
+        self.films.append(FiLM(ch, ch))
 
         self.ups.apply(init_weights)
         self.conv_post.apply(init_weights)
@@ -135,7 +150,7 @@ class Generator(nn.Module):
         skips = list(reversed(skips))
         x = self.conv_pre(x)
         for i in range(self.num_upsamples):
-            x = x + skips[i]
+            x = self.films[i](x, skips[i])
             x = F.leaky_relu(x, 0.1)
             x = self.ups[i](x)
             xs = None
@@ -145,7 +160,7 @@ class Generator(nn.Module):
                 else:
                     xs += self.resblocks[i*self.num_kernels+j](x)
             x = xs / self.num_kernels
-        x = x + skips[-1]
+        x = self.films[-1](x, skips[-1])
         x = F.leaky_relu(x)
         x = self.conv_post(x)
         x = torch.tanh(x)
