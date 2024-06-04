@@ -24,5 +24,5 @@ python3 train.py
 
 # Inference
 ```sh
-python3 infer_webui
+python3 infer_webui.py
 ```
