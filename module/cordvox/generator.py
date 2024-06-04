@@ -6,8 +6,10 @@ import torch.nn.functional as F
 
 from torch.nn.utils.parametrizations import weight_norm
 
+
 def get_padding(kernel_size, dilation=1):
     return int((kernel_size*dilation - dilation)/2)
+
 
 def init_weights(m, mean=0.0, std=0.01):
     classname = m.__class__.__name__
@@ -15,7 +17,7 @@ def init_weights(m, mean=0.0, std=0.01):
         m.weight.data.normal_(mean, std)
 
 
-class SineOscillator(nn.Module):
+class HarmonicOscillator(nn.Module):
     def __init__(
             self,
             sample_rate=24000,
@@ -113,7 +115,7 @@ class Generator(nn.Module):
         else:
             raise "invalid resblock type"
 
-        self.oscillator = SineOscillator(sample_rate, frame_size, num_harmonics=num_harmonics)
+        self.oscillator = HarmonicOscillator(sample_rate, frame_size, num_harmonics=num_harmonics)
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
         self.source_pre = weight_norm(nn.Conv1d(num_harmonics+2, upsample_initial_channels//(2**(self.num_upsamples)), 7, 1, 3))
         self.ups = nn.ModuleList([])
