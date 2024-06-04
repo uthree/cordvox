@@ -11,6 +11,7 @@ import lightning as L
 from module.cordvox import Cordvox
 from module.utils.dataset import VocoderDataModule
 from module.utils.config import load_json_file
+from module.utils.safetensors import save_tensors
 
 class SaveCheckpoint(L.Callback):
     def __init__(self, models_dir, interval=200):
@@ -24,6 +25,9 @@ class SaveCheckpoint(L.Callback):
         if batch_idx % self.interval == 0:
             ckpt_path = self.models_dir / "model.ckpt"
             trainer.save_checkpoint(ckpt_path)
+            save_tensors(pl_module.generator.state_dict(), self.models_dir / "generator.safetensors")
+            save_tensors(pl_module.discriminator.state_dict(), self.models_dir / "discriminator.safetensors")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
