@@ -41,7 +41,7 @@
                 "channels": 32,
                 "channels_mul": 2,
                 "max_channels": 256,
-                "num_layers": 6
+                "num_layers": 4
             },
             "mrd": {
                 "resolutions": [128, 256, 512],

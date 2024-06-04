@@ -8,7 +8,7 @@ def get_padding(kernel_size, dilation=1):
 
 
 class DiscriminatorP(nn.Module):
-    def __init__(self, period, kernel_size=5, stride=3, channels=32, channels_mul=2, num_layers=6, max_channels=256, use_spectral_norm=False):
+    def __init__(self, period, kernel_size=5, stride=3, channels=32, channels_mul=2, num_layers=4, max_channels=256, use_spectral_norm=False):
         super().__init__()
         self.period = period
         norm_f = nn.utils.parametrizations.weight_norm if use_spectral_norm == False else nn.utils.parametrizations.spectral_norm
@@ -52,7 +52,7 @@ class MultiPeriodicDiscriminator(nn.Module):
             channels=32,
             channels_mul=2,
             max_channels=256,
-            num_layers=6
+            num_layers=4
             ):
         super().__init__()
         self.sub_discs = nn.ModuleList([])
