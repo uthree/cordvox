@@ -23,13 +23,15 @@ class HarmonicOscillator(nn.Module):
             sample_rate=24000,
             frame_size=480,
             min_frequency=20.0,
-            num_harmonics=30,
+            num_harmonics=0,
+            noise_scale=0.02
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.min_frequency = min_frequency
         self.num_harmonics = num_harmonics
+        self.noise_scale = noise_scale
 
     def forward(self, f0):
         f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
@@ -38,11 +40,24 @@ class HarmonicOscillator(nn.Module):
         uv = (f0 >= self.min_frequency).to(torch.float)
         integrated = torch.cumsum(fs / self.sample_rate, dim=2)
         theta = 2 * math.pi * (integrated % 1)
-        sinusoid = torch.sin(theta) * uv
-        noise = torch.randn(theta.shape[0], 1, theta.shape[2], device=theta.device)
-        source = torch.cat([sinusoid, noise], dim=1)
-        return source
+        sinusoid = torch.sin(theta) * uv + torch.randn_like(theta) * self.noise_scale
+        return sinusoid
     
+
+class ExcitationBlock(nn.Module):
+    def __init__(self, channels, kernel_size=3, dilations=[1, 2, 4]):
+        super().__init__()
+        self.convs = nn.ModuleList([])
+        for d in dilations:
+            self.convs.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
+    
+    def forward(self, x):
+        res = x
+        for c in self.convs:
+            x = F.leaky_relu(x, 0.1)
+            x = c(x)
+        return x + res
+
 
 class FiLM(nn.Module):
     def __init__(self, input_channels, condition_channels):
@@ -96,13 +111,15 @@ class Generator(nn.Module):
             n_mels=80,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=30,
+            num_harmonics=0,
             upsample_initial_channels=512,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
             resblock_dilations=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
             upsample_kernel_sizes=[24, 20, 4, 4],
-            upsample_rates=[12, 10, 2, 2]
+            upsample_rates=[12, 10, 2, 2],
+            excitation_kernel_size=3,
+            excitation_dilations=[1, 2, 4],
         ):
         super().__init__()
         self.num_kernels = len(resblock_kernel_sizes)
@@ -117,18 +134,22 @@ class Generator(nn.Module):
 
         self.oscillator = HarmonicOscillator(sample_rate, frame_size, num_harmonics=num_harmonics)
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
-        self.source_pre = weight_norm(nn.Conv1d(num_harmonics+2, upsample_initial_channels//(2**(self.num_upsamples)), 7, 1, 3))
-        self.ups = nn.ModuleList([])
-        self.films = nn.ModuleList([])
+        ch_last = upsample_initial_channels//(2**(self.num_upsamples))
+        self.source_pre = weight_norm(nn.Conv1d(num_harmonics+1, ch_last, 7, 1, 3))
+        self.ups = nn.ModuleList()
+        self.films = nn.ModuleList()
         downs = []
+        excitationblocks = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
             c1 = upsample_initial_channels//(2**i)
             c2 = upsample_initial_channels//(2**(i+1))
             p = (k-u)//2
             self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
             downs.append(weight_norm(nn.Conv1d(c2, c1, k, u, p)))
+            excitationblocks.append(ExcitationBlock(c1, excitation_kernel_size, excitation_dilations))
             self.films.append(FiLM(c1, c1))
         self.downs = nn.ModuleList(reversed(downs))
+        self.excitationblocks = nn.ModuleList(reversed(excitationblocks))
         
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
@@ -148,6 +169,7 @@ class Generator(nn.Module):
         skips = [s]
         for i in range(self.num_upsamples):
             s = self.downs[i](s)
+            self.excitationblocks[i](s)
             skips.append(s)
         skips = list(reversed(skips))
         x = self.conv_pre(x)

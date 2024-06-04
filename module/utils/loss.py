@@ -58,4 +58,4 @@ def feature_matching_loss(fmap_real, fmap_fake):
         f = f.float()
         r = r.float()
         loss += (f - r).abs().mean()
-    return loss * (2 / n)
+    return loss / n
