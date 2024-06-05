@@ -27,15 +27,13 @@
             "n_mels": 80,
             "sample_rate": 24000,
             "frame_size": 480,
-            "num_harmonics": 0,
+            "num_harmonics": 15,
             "upsample_initial_channels": 256,
             "resblock_type": "2",
             "resblock_kernel_sizes": [3, 5, 7],
             "resblock_dilations": [[1, 2], [2, 6], [3, 12]],
             "upsample_kernel_sizes": [24, 20, 8],
-            "upsample_rates": [12, 10, 4],
-            "excitation_kernel_size": 3,
-            "excitation_dilations": [1, 2, 4]
+            "upsample_rates": [12, 10, 4]
         },
         "discriminator": {
             "mpd": {

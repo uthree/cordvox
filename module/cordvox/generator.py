@@ -22,16 +22,14 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=0,
+            num_harmonics=31,
             min_frequency=20.0,
-            noise_scale=0.03
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.min_frequency = min_frequency
         self.num_harmonics = num_harmonics
-        self.noise_scale = noise_scale
 
     def forward(self, f0):
         f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
@@ -40,8 +38,8 @@ class HarmonicOscillator(nn.Module):
         uv = (f0 >= self.min_frequency).to(torch.float)
         integrated = torch.cumsum(fs / self.sample_rate, dim=2)
         theta = 2 * math.pi * (integrated % 1)
-        sinusoid = torch.sin(theta) * uv + torch.randn_like(theta) * self.noise_scale
-        return sinusoid
+        source = torch.sin(theta) * uv
+        return source
     
 
 class FiLM(nn.Module):
@@ -54,21 +52,6 @@ class FiLM(nn.Module):
         shift = self.to_shift(c)
         scale = self.to_scale(c)
         return x * scale + shift
-    
-
-class ExcitationBlock(nn.Module):
-    def __init__(self, channels, kernel_size=3, dilations=[1, 2, 4]):
-        super().__init__()
-        self.convs = nn.ModuleList([])
-        for d in dilations:
-            self.convs.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
-    
-    def forward(self, x):
-        res = x
-        for c in self.convs:
-            x = F.leaky_relu(x, 0.1)
-            x = c(x)
-        return x + res
 
 
 class ResBlock1(nn.Module):
@@ -76,20 +59,17 @@ class ResBlock1(nn.Module):
         super().__init__()
         self.convs1 = nn.ModuleList()
         self.convs2 = nn.ModuleList()
-        self.films = nn.ModuleList()
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
-            self.films.append(FiLM(channels, channels))
 
-    def forward(self, x, c):
-        for c1, c2, f in zip(self.convs1, self.convs2, self.films):
+    def forward(self, x):
+        for c1, c2, in zip(self.convs1, self.convs2):
             res = x
             x = F.leaky_relu(x, 0.1)
             x = c1(x)
             x = F.leaky_relu(x, 0.1)
             x = c2(x)
-            x = f(c, x)
             x = x + res
         return x
     
@@ -98,17 +78,13 @@ class ResBlock2(nn.Module):
     def __init__(self, channels, kernel_size=3, dilations=[1, 3]):
         super().__init__()
         self.convs = nn.ModuleList([])
-        self.films = nn.ModuleList([])
         for d in dilations:
             self.convs.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
-            self.films.append(FiLM(channels, channels))
-
-    def forward(self, x, c):
-        for c1, f in zip(self.convs, self.films):
+    def forward(self, x):
+        for c1 in self.convs:
             res = x
             x = F.leaky_relu(x, 0.1)
             x = c1(x)
-            x = f(c, x)
             x = x + res
         return x
     
@@ -119,15 +95,13 @@ class Generator(nn.Module):
             n_mels=80,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=0,
+            num_harmonics=31,
             upsample_initial_channels=512,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
             resblock_dilations=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
             upsample_kernel_sizes=[24, 20, 4, 4],
-            upsample_rates=[12, 10, 2, 2],
-            excitation_kernel_size=3,
-            excitation_dilations=[1, 2, 4],
+            upsample_rates=[12, 10, 2, 2]
         ):
         super().__init__()
         self.num_kernels = len(resblock_kernel_sizes)
@@ -147,55 +121,46 @@ class Generator(nn.Module):
         self.ups = nn.ModuleList()
         self.films = nn.ModuleList()
         downs = []
-        excitationblocks = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
             c1 = upsample_initial_channels//(2**i)
             c2 = upsample_initial_channels//(2**(i+1))
             p = (k-u)//2
-            self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
             downs.append(weight_norm(nn.Conv1d(c2, c1, k, u, p)))
-            excitationblocks.append(ExcitationBlock(c2, excitation_kernel_size, excitation_dilations))
-            self.films.append(FiLM(c1, c1))
+            self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
+            self.films.append(FiLM(c2, c2))
         self.downs = nn.ModuleList(reversed(downs))
-        self.excitationblocks = nn.ModuleList(reversed(excitationblocks))
         
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
             ch = upsample_initial_channels//(2**(i+1))
             for j, (k, d) in enumerate(zip(resblock_kernel_sizes, resblock_dilations)):
                 self.resblocks.append(resblock(ch, k, d))
-
         self.conv_post = weight_norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
-        self.films.append(FiLM(ch, ch))
 
         self.ups.apply(init_weights)
         self.conv_post.apply(init_weights)
 
     def forward(self, x, f0):
-        # Oscillator
         s = self.oscillator(f0)
 
-        # Encoder
         skips = []
         s = self.source_pre(s)
         for i in range(self.num_upsamples):
-            s = self.excitationblocks[i](s)
             skips.append(s)
-            s = F.leaky_relu(s, 0.1)
             s = self.downs[i](s)
         skips = list(reversed(skips))
 
-        # Decoder
         x = self.conv_pre(x)
         for i in range(self.num_upsamples):
             x = F.leaky_relu(x, 0.1)
             x = self.ups[i](x)
+            x = self.films[i](skips[i], x)
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
-                    xs = self.resblocks[i*self.num_kernels+j](x, skips[i])
+                    xs = self.resblocks[i*self.num_kernels+j](x)
                 else:
-                    xs += self.resblocks[i*self.num_kernels+j](x, skips[i])
+                    xs += self.resblocks[i*self.num_kernels+j](x)
             x = xs / self.num_kernels
         x = F.leaky_relu(x)
         x = self.conv_post(x)
