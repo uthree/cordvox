@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -45,7 +46,14 @@ if __name__ == "__main__":
     @torch.inference_mode()
     def convert(input_audio, pitch_shift, unvoiced):
         input_sr, input_wf = input_audio
-        input_wf = torch.from_numpy(input_wf).unsqueeze(0).to(device).to(torch.float) / 32768.0
+        dtype = input_wf.dtype
+        if input_wf.ndim == 2:
+            input_wf = input_wf[:, 0]
+        input_wf = torch.from_numpy(input_wf).unsqueeze(0).to(device).to(torch.float)
+        if dtype == np.int32:
+            input_wf /= 2147483647.0
+        elif dtype == np.int16:
+            input_wf /= 32768.0
         input_wf = resample(input_wf, input_sr, sample_rate).to(device)
 
         f0 = estimate_f0(input_wf, sample_rate, frame_size, pe_algorithm)

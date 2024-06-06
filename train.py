@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=str, default="config/v3_24k.json")
     parser.add_argument("-nod", "--no-discriminator", type=bool, default=False)
+    parser.add_argument("-b", "--batch-size", default=0, type=int)
     args = parser.parse_args()
 
     config = load_json_file(args.config)
@@ -45,8 +46,13 @@ if __name__ == "__main__":
         model = Cordvox.load_from_checkpoint(model_path)
     else:
         model = Cordvox(config["model"])
+    
+    dm_config = config['data_module']
 
-    dm = VocoderDataModule(**config['data_module'])
+    if args.batch_size != 0:
+        dm_config['batch_size'] = args.batch_size
+
+    dm = VocoderDataModule(**dm_config)
     if args.no_discriminator:
         model.discriminator_active = False
     else:

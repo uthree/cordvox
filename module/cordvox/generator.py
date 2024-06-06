@@ -22,14 +22,16 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=31,
+            num_harmonics=0,
             min_frequency=20.0,
+            noise_scale=0.03
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.min_frequency = min_frequency
         self.num_harmonics = num_harmonics
+        self.noise_scale = noise_scale
 
     def forward(self, f0):
         f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
@@ -38,20 +40,8 @@ class HarmonicOscillator(nn.Module):
         uv = (f0 >= self.min_frequency).to(torch.float)
         integrated = torch.cumsum(fs / self.sample_rate, dim=2)
         theta = 2 * math.pi * (integrated % 1)
-        source = torch.sin(theta) * uv
+        source = torch.sin(theta) * uv + torch.randn_like(theta) * self.noise_scale
         return source
-    
-
-class FiLM(nn.Module):
-    def __init__(self, input_channels, condition_channels):
-        super().__init__()
-        self.to_shift = weight_norm(nn.Conv1d(condition_channels, input_channels, 1))
-        self.to_scale = weight_norm(nn.Conv1d(condition_channels, input_channels, 1))
-
-    def forward(self, x, c):
-        shift = self.to_shift(c)
-        scale = self.to_scale(c)
-        return x * scale + shift
 
 
 class ResBlock1(nn.Module):
@@ -59,33 +49,34 @@ class ResBlock1(nn.Module):
         super().__init__()
         self.convs1 = nn.ModuleList()
         self.convs2 = nn.ModuleList()
+        self.convs3 = nn.ModuleList()
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
 
     def forward(self, x):
-        for c1, c2, in zip(self.convs1, self.convs2):
-            res = x
-            x = F.leaky_relu(x, 0.1)
-            x = c1(x)
-            x = F.leaky_relu(x, 0.1)
-            x = c2(x)
-            x = x + res
+        for c1, c2 in zip(self.convs1, self.convs2):
+            xt = F.leaky_relu(x, 0.1)
+            xt = c1(xt)
+            xt = F.leaky_relu(xt, 0.1)
+            xt = c2(xt)
+            x = x + xt
         return x
     
 
 class ResBlock2(nn.Module):
     def __init__(self, channels, kernel_size=3, dilations=[1, 3]):
         super().__init__()
-        self.convs = nn.ModuleList([])
+        self.convs1 = nn.ModuleList()
+        self.convs2 = nn.ModuleList()
         for d in dilations:
-            self.convs.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
+            self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
+
     def forward(self, x):
-        for c1 in self.convs:
-            res = x
-            x = F.leaky_relu(x, 0.1)
-            x = c1(x)
-            x = x + res
+        for c1 in self.convs1:
+            xt = F.leaky_relu(x, 0.1)
+            xt = c1(xt)
+            x = x + xt
         return x
     
 
@@ -95,7 +86,7 @@ class Generator(nn.Module):
             n_mels=80,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=31,
+            num_harmonics=0,
             upsample_initial_channels=512,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
@@ -119,7 +110,6 @@ class Generator(nn.Module):
         ch_last = upsample_initial_channels//(2**(self.num_upsamples))
         self.source_pre = weight_norm(nn.Conv1d(num_harmonics+1, ch_last, 7, 1, 3))
         self.ups = nn.ModuleList()
-        self.films = nn.ModuleList()
         downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
             c1 = upsample_initial_channels//(2**i)
@@ -127,7 +117,6 @@ class Generator(nn.Module):
             p = (k-u)//2
             downs.append(weight_norm(nn.Conv1d(c2, c1, k, u, p)))
             self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
-            self.films.append(FiLM(c2, c2))
         self.downs = nn.ModuleList(reversed(downs))
         
         self.resblocks = nn.ModuleList()
@@ -154,7 +143,7 @@ class Generator(nn.Module):
         for i in range(self.num_upsamples):
             x = F.leaky_relu(x, 0.1)
             x = self.ups[i](x)
-            x = self.films[i](skips[i], x)
+            x = x + skips[i]
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
