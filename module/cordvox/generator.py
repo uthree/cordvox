@@ -139,7 +139,7 @@ class Generator(nn.Module):
             s = self.downs[i](s)
         skips = list(reversed(skips))
 
-        x = self.conv_pre(x)
+        x = self.conv_pre(x) + s
         for i in range(self.num_upsamples):
             x = F.leaky_relu(x, 0.1)
             x = self.ups[i](x)
