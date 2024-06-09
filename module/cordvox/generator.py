@@ -49,16 +49,15 @@ class ResBlock1(nn.Module):
         super().__init__()
         self.convs1 = nn.ModuleList()
         self.convs2 = nn.ModuleList()
-        self.convs3 = nn.ModuleList()
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
 
     def forward(self, x):
-        for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.leaky_relu(x, 0.1)
+        for c1, c2, in zip(self.convs1, self.convs2):
+            xt = F.gelu(x)
             xt = c1(xt)
-            xt = F.leaky_relu(xt, 0.1)
+            xt = F.gelu(xt)
             xt = c2(xt)
             x = x + xt
         return x
@@ -68,13 +67,12 @@ class ResBlock2(nn.Module):
     def __init__(self, channels, kernel_size=3, dilations=[1, 3]):
         super().__init__()
         self.convs1 = nn.ModuleList()
-        self.convs2 = nn.ModuleList()
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
 
     def forward(self, x):
         for c1 in self.convs1:
-            xt = F.leaky_relu(x, 0.1)
+            xt = F.gelu(x)
             xt = c1(xt)
             x = x + xt
         return x
@@ -136,12 +134,13 @@ class Generator(nn.Module):
         s = self.source_pre(s)
         for i in range(self.num_upsamples):
             skips.append(s)
+            s = F.gelu(s)
             s = self.downs[i](s)
         skips = list(reversed(skips))
 
         x = self.conv_pre(x) + s
         for i in range(self.num_upsamples):
-            x = F.leaky_relu(x, 0.1)
+            x = F.gelu(x)
             x = self.ups[i](x)
             x = x + skips[i]
             xs = None
@@ -151,7 +150,7 @@ class Generator(nn.Module):
                 else:
                     xs += self.resblocks[i*self.num_kernels+j](x)
             x = xs / self.num_kernels
-        x = F.leaky_relu(x)
+        x = F.gelu(x)
         x = self.conv_post(x)
         x = torch.tanh(x)
         return x
