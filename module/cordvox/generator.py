@@ -54,7 +54,7 @@ class ResBlock1(nn.Module):
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
 
     def forward(self, x):
-        for c1, c2, in zip(self.convs1, self.convs2):
+        for c1, c2 in zip(self.convs1, self.convs2):
             xt = F.gelu(x)
             xt = c1(xt)
             xt = F.gelu(xt)
@@ -75,6 +75,46 @@ class ResBlock2(nn.Module):
             xt = F.gelu(x)
             xt = c1(xt)
             x = x + xt
+        return x
+    
+
+class ResBlock3(nn.Module):
+    def __init__(self, channels, kernel_size=3, dilations=[1, 3, 5]):
+        super().__init__()
+        self.convs1 = nn.ModuleList()
+        self.convs2 = nn.ModuleList()
+        self.convs3 = nn.ModuleList()
+        for d in dilations:
+            self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
+            self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
+            self.convs3.append(weight_norm(nn.Conv1d(channels, channels, 1)))
+
+    def forward(self, x):
+        for c1, c2, c3 in zip(self.convs1, self.convs2, self.convs3):
+            xt = F.gelu(x)
+            xt = c1(xt)
+            xt = F.gelu(xt)
+            xt = c2(xt)
+            xs = c3(x)
+            x = x + xt * xs
+        return x
+    
+
+class ResBlock4(nn.Module):
+    def __init__(self, channels, kernel_size=3, dilations=[1, 3]):
+        super().__init__()
+        self.convs1 = nn.ModuleList()
+        self.convs2 = nn.ModuleList()
+        for d in dilations:
+            self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
+            self.convs2.append(weight_norm(nn.Conv1d(channels, channels, 1)))
+
+    def forward(self, x):
+        for c1, c2 in zip(self.convs1, self.convs2):
+            xt = F.gelu(x)
+            xt = c1(xt)
+            xs = c2(x)
+            x = x + xt * xs
         return x
     
 
@@ -100,6 +140,10 @@ class Generator(nn.Module):
             resblock = ResBlock1
         elif resblock_type == "2":
             resblock = ResBlock2
+        elif resblock_type == "3":
+            resblock = ResBlock3
+        elif resblock_type == "4":
+            resblock = ResBlock4
         else:
             raise "invalid resblock type"
 

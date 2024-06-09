@@ -174,3 +174,4 @@ backups/*
 lightning_logs/
 dataset_cache
 models/
+backups
