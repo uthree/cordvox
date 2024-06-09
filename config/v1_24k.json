@@ -15,8 +15,8 @@
     },
     "data_module": {
         "cache_dir": "dataset_cache",
-        "batch_size": 4,
-        "num_workers": 1
+        "batch_size": 16,
+        "num_workers": 15
     },
     "save": {
         "interval": 400,
