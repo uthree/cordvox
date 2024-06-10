@@ -271,5 +271,6 @@ class Generator(nn.Module):
 
     def forward(self, x, f0):
         source = self.source_net(f0)
+        source = F.instance_norm(source) # TODO: stabilize normalization
         output = self.filter_net(x, source)
         return output

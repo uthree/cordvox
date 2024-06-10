@@ -27,8 +27,7 @@
             "source_type": "hn",
             "source": {
                 "sample_rate": 24000,
-                "frame_size": 480,
-                "num_harmonics": 0
+                "frame_size": 480
             },
             "filter": {
                 "n_mels": 80,
