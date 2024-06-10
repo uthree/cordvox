@@ -21,4 +21,5 @@ g3モデル等のGLUレイヤーを導入したバージョンを用意。ソー
 
 
 ### Cyclic Noise
+Cyclic Noiseを生成するオシレータ。
 https://www.isca-archive.org/interspeech_2020/wang20u_interspeech.pdf

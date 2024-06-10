@@ -260,7 +260,7 @@ class FilterNet(nn.Module):
     
 
 class Generator(nn.Module):
-    def __init__(self, source, filter, source_type="hn"):
+    def __init__(self, source, filter, source_type="cn"):
         super().__init__()
         if source_type == "hn":
             source_net = HarmonicOscillator
@@ -271,6 +271,5 @@ class Generator(nn.Module):
 
     def forward(self, x, f0):
         source = self.source_net(f0)
-        source = F.instance_norm(source) # TODO: stabilize normalization
         output = self.filter_net(x, source)
         return output

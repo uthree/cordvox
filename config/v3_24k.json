@@ -24,7 +24,7 @@
     },
     "model": {
         "generator": {
-            "source_type": "hn",
+            "source_type": "cn",
             "source": {
                 "sample_rate": 24000,
                 "frame_size": 480
