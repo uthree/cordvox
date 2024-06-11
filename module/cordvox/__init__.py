@@ -29,6 +29,10 @@ class Cordvox(L.LightningModule):
 
         # aliases
         G, D = self.generator, self.discriminator
+
+        # TODO: 個のサンプリングレート/フレーム長の取得方法だとモデル構造体によって失敗する可能性があるので、コードの変更に対する制約を生むので別の方法にする。
+        sample_rate = G.source_net.sample_rate
+        frame_size = G.source_net.frame_size
         
         fake = G(mel, f0).squeeze(1)
         loss_stft = multiscale_stft_loss(wf, fake)
@@ -38,7 +42,7 @@ class Cordvox(L.LightningModule):
             logits_real, feats_real = D(wf)
             loss_adv = generator_adversarial_loss(logits_fake)
             loss_feat = feature_matching_loss(feats_real, feats_fake)
-            loss_G = loss_stft * 45.0 + loss_feat + loss_adv
+            loss_G = loss_stft * 10.0 + loss_feat + loss_adv
         else:
             loss_G = loss_stft
 

@@ -34,7 +34,7 @@ class HarmonicOscillator(nn.Module):
         self.num_harmonics = num_harmonics
         self.alpha = alpha
         self.sigma = sigma
-        self.w = nn.Conv1d(num_harmonics+1, 1, 1)
+        self.w = nn.Conv1d(num_harmonics + 1, 1, 1)
 
     def forward(self, f0):
         with torch.no_grad():
@@ -54,7 +54,7 @@ class HarmonicOscillator(nn.Module):
             voiced_part = harmonics * alpha + noise
             unvoiced_part = noise * (alpha / (3 * sigma))
             excitation = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
-            
+        
         source = F.tanh(self.w(excitation))
         return source
     
@@ -100,7 +100,7 @@ class CyclicNoiseOscillator(nn.Module):
             impluse = F.pad(impluse, (self.pad_size, 0))
             cyclic_noise = F.conv1d(impluse, kernel)
             source = voiced_mask * cyclic_noise + (1 - voiced_mask) * noise
-        source = self.w(source)
+        source = F.tanh(self.w(source))
         return source
     
 
