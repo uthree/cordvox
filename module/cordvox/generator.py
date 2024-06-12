@@ -22,42 +22,37 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=8,
+            num_harmonics=16,
             min_frequency=20.0,
-            sigma=0.003,
-            alpha=0.1
+            noise_scale=0.03
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.min_frequency = min_frequency
         self.num_harmonics = num_harmonics
-        self.alpha = alpha
-        self.sigma = sigma
-        self.w = nn.Conv1d(num_harmonics + 1, 1, 1)
+        self.noise_scale = noise_scale
+
+        self.output_channels = num_harmonics
 
     def forward(self, f0):
         with torch.no_grad():
             f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
             N = f0.shape[0]
             L = f0.shape[2]
-            alpha = self.alpha
-            sigma = self.sigma
-            mul = (torch.arange(self.num_harmonics+1, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
+            mul = (torch.arange(self.num_harmonics, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
             fs = f0 * mul
             voiced_mask = (f0 >= self.min_frequency).to(torch.float)
-            phi = 2 * math.pi * torch.rand(N, self.num_harmonics+1, 1, device=f0.device)
+            phi = 2 * math.pi * torch.rand(N, self.num_harmonics, 1, device=f0.device)
             integrated = torch.cumsum(fs / self.sample_rate, dim=2) + phi
             rad = 2 * math.pi * (integrated % 1)
             harmonics = torch.sin(rad)
-            noise = torch.randn(N, 1, L, device=f0.device) * sigma
-            voiced_part = harmonics * alpha + noise
-            unvoiced_part = noise * (alpha / (3 * sigma))
-            excitation = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
-        
-        source = F.tanh(self.w(excitation))
+            noise = torch.randn_like(harmonics)
+            voiced_part = harmonics + noise * self.noise_scale
+            unvoiced_part = noise * 0.333
+            source = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
         return source
-    
+
 
 class CyclicNoiseOscillator(nn.Module):
     def __init__(
@@ -75,13 +70,15 @@ class CyclicNoiseOscillator(nn.Module):
         self.base_frequency = base_frequency
         self.beta = beta
 
+        self.output_channels = 1
+
         self.kernel_size = int(4.6 * self.sample_rate / self.base_frequency)
         self.pad_size = self.kernel_size - 1
-        self.w = nn.Conv1d(1, 1, 1)
 
     def generate_kernel(self):
-        t = torch.arange(0, self.kernel_size, device=self.w.weight.device)[None, None, :]
+        t = torch.arange(0, self.kernel_size)[None, None, :]
         decay = torch.exp(-t * self.base_frequency / self.beta / self.sample_rate)
+        decay = decay.flip(dims=[2])
         noise = torch.randn_like(decay)
         kernel = noise * decay
         return kernel
@@ -96,11 +93,10 @@ class CyclicNoiseOscillator(nn.Module):
             sawtooth = rad % 1.0
             impluse = sawtooth - sawtooth.roll(1, dims=(2))
             noise = torch.randn(N, 1, L, device=f0.device)
-            kernel = self.generate_kernel()
+            kernel = self.generate_kernel().to(f0.device)
             impluse = F.pad(impluse, (self.pad_size, 0))
             cyclic_noise = F.conv1d(impluse, kernel)
             source = voiced_mask * cyclic_noise + (1 - voiced_mask) * noise
-        source = F.tanh(self.w(source))
         return source
     
 
@@ -112,7 +108,6 @@ class ResBlock1(nn.Module):
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
-        self.apply(init_weights)
 
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
@@ -130,7 +125,6 @@ class ResBlock2(nn.Module):
         self.convs1 = nn.ModuleList()
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
-        self.apply(init_weights)
 
     def forward(self, x):
         for c1 in self.convs1:
@@ -150,7 +144,6 @@ class ResBlock3(nn.Module):
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
             self.convs3.append(weight_norm(nn.Conv1d(channels, channels, 1)))
-        self.apply(init_weights)
 
     def forward(self, x):
         for c1, c2, c3 in zip(self.convs1, self.convs2, self.convs3):
@@ -171,7 +164,6 @@ class ResBlock4(nn.Module):
         for d in dilations:
             self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
             self.convs2.append(weight_norm(nn.Conv1d(channels, channels, 1)))
-        self.apply(init_weights)
 
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
@@ -187,6 +179,7 @@ class FilterNet(nn.Module):
             self,
             n_mels=80,
             upsample_initial_channels=512,
+            source_channels=1,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
             resblock_dilations=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
@@ -210,7 +203,7 @@ class FilterNet(nn.Module):
 
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
         ch_last = upsample_initial_channels//(2**(self.num_upsamples))
-        self.source_pre = weight_norm(nn.Conv1d(1, ch_last, 7, 1, 3))
+        self.source_pre = weight_norm(nn.Conv1d(source_channels, ch_last, 7, 1, 3))
         self.ups = nn.ModuleList()
         downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
@@ -228,9 +221,8 @@ class FilterNet(nn.Module):
                 self.resblocks.append(resblock(ch, k, d))
         self.conv_post = weight_norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
 
-        self.ups.apply(init_weights)
-        self.downs.apply(init_weights)
-        self.conv_post.apply(init_weights)
+        self.apply(init_weights)
+
 
     def forward(self, x, source):
         skips = []
@@ -260,14 +252,16 @@ class FilterNet(nn.Module):
     
 
 class Generator(nn.Module):
-    def __init__(self, source, filter, source_type="cn"):
+    def __init__(self, source, filter, source_type="harmonic"):
         super().__init__()
-        if source_type == "hn":
+        if source_type == "harmonic":
             source_net = HarmonicOscillator
-        elif source_type == "cn":
+        elif source_type == "cyclic_noise":
             source_net = CyclicNoiseOscillator
+        else:
+            raise "Invalid source_type"
         self.source_net = source_net(**source)
-        self.filter_net = FilterNet(**filter)
+        self.filter_net = FilterNet(**filter, source_channels=self.source_net.output_channels)
 
     def forward(self, x, f0):
         source = self.source_net(f0)
