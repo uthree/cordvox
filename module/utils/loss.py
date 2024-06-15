@@ -8,11 +8,11 @@ def safe_log(x, eps=1e-6):
     return torch.log(x + eps)
 
 
-def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[16, 32, 64, 128, 256, 512], alpha=1.0, beta=0.0):
+def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[8, 16, 32, 64, 128, 256], alpha=1.0, beta=1.0):
     '''
     shapes:
-        x: [N, L * frame_size]
-        y: [N, L * frame_size]
+        x: [N, Waveform Length]
+        y: [N, Waveform Length]
 
         Output: []
     '''
@@ -33,7 +33,7 @@ def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[16, 32, 64, 1
         y_spec[y_spec.isnan()] = 0
         y_spec[y_spec.isinf()] = 0
 
-        loss += F.huber_loss(safe_log(x_spec), safe_log(y_spec)) * alpha + F.huber_loss(x_spec, y_spec) * beta 
+        loss += F.l1_loss(safe_log(x_spec), safe_log(y_spec)) * alpha + F.mse_loss(x_spec, y_spec) * beta 
     return loss / num_scales
 
 

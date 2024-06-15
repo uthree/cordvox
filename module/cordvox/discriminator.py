@@ -23,7 +23,7 @@ class DiscriminatorP(nn.Module):
             convs.append(nn.Conv2d(c, c_next, (k, 1), (s, 1), (get_padding(5, 1), 0)))
             c = c_next
         self.convs = nn.ModuleList([norm_f(c) for c in convs])
-        self.post = norm_f(nn.Conv2d(c, 1, 1, 0, (1, 0), bias=False))
+        self.post = norm_f(nn.Conv2d(c, 1, 1, 1, 0, bias=False))
 
     def forward(self, x):
         fmap = []
@@ -85,7 +85,7 @@ class DiscriminatorR(nn.Module):
         self.n_fft = resolution * 4
         for _ in range(num_layers):
             self.convs.append(norm_f(nn.Conv2d(channels, channels, (7, 3), (2, 1), (2, 1))))
-        self.post = norm_f(nn.Conv2d(channels, 1, 1, 0, bias=False))
+        self.post = norm_f(nn.Conv2d(channels, 1, 1, 1, 0, bias=False))
 
     def spectrogram(self, x):
         # spectrogram

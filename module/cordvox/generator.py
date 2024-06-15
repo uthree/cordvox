@@ -22,7 +22,7 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=1,
+            num_harmonics=16,
             min_frequency=20.0,
             noise_scale=0.03
         ):
