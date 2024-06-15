@@ -77,8 +77,8 @@ def discriminator_adversarial_loss(real_logits: torch.Tensor, fake_logits: torch
     loss = 0.0
     n = min(len(real_logits), len(fake_logits))
     for dr, df in zip(real_logits, fake_logits):
-        real_loss = (1.0 - dr).relu().mean()
-        fake_loss = (1.0 + df).relu().mean()
+        real_loss = F.softplus(1.0 - dr).mean()
+        fake_loss = F.softplus(1.0 + df).mean()
         loss += real_loss + fake_loss
     return loss / n
 
@@ -87,7 +87,7 @@ def generator_adversarial_loss(fake_logits: torch.Tensor):
     loss = 0.0
     n = len(fake_logits)
     for dg in fake_logits:
-        loss += - dg.mean()
+        loss += F.softplus(1.0 - dg).mean()
     return loss / n
 
 
