@@ -22,7 +22,7 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=16,
+            num_harmonics=1,
             min_frequency=20.0,
             noise_scale=0.03
         ):
@@ -38,14 +38,12 @@ class HarmonicOscillator(nn.Module):
     def forward(self, f0):
         with torch.no_grad():
             f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
-            N = f0.shape[0]
-            L = f0.shape[2]
+            voiced_mask = (f0 >= self.min_frequency).to(torch.float)
             mul = (torch.arange(self.num_harmonics, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
             fs = f0 * mul
-            voiced_mask = (f0 >= self.min_frequency).to(torch.float)
-            phi = 2 * math.pi * torch.rand(N, self.num_harmonics, 1, device=f0.device)
-            integrated = torch.cumsum(fs / self.sample_rate, dim=2) + phi
-            rad = 2 * math.pi * (integrated % 1)
+            integrated = torch.cumsum(fs / self.sample_rate, dim=2)
+            phi = torch.rand(1, self.num_harmonics, 1, device=f0.device)
+            rad = 2 * math.pi * ((integrated + phi) % 1)
             harmonics = torch.sin(rad)
             noise = torch.randn_like(harmonics)
             voiced_part = harmonics + noise * self.noise_scale
