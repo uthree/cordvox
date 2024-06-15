@@ -18,3 +18,7 @@ LeakyReLUはなめらかではないのでより滑らかなGELUに変更。
 ### Cyclic Noise
 Cyclic Noiseを生成するオシレータ。
 https://www.isca-archive.org/interspeech_2020/wang20u_interspeech.pdf
+
+### SAN
+SAN損失を追加
+https://arxiv.org/abs/2301.12811

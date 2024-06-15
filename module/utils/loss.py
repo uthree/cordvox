@@ -73,25 +73,31 @@ def harmonic_masked_stft_loss(
     return loss
 
 
-# 1 = fake, 0 = real
-def discriminator_adversarial_loss(real_outputs: torch.Tensor, fake_outputs: torch.Tensor):
-    loss = 0
-    n = min(len(real_outputs), len(fake_outputs))
-    for dr, df in zip(real_outputs, fake_outputs):
-        dr = dr.float()
-        df = df.float()
-        real_loss = (dr ** 2).mean()
-        fake_loss = ((df - 1) ** 2).mean()
+def discriminator_adversarial_loss(real_logits: torch.Tensor, fake_logits: torch.Tensor):
+    loss = 0.0
+    n = min(len(real_logits), len(fake_logits))
+    for dr, df in zip(real_logits, fake_logits):
+        real_loss = (1.0 - dr).relu().mean()
+        fake_loss = (1.0 + df).relu().mean()
         loss += real_loss + fake_loss
     return loss / n
 
 
-def generator_adversarial_loss(fake_outputs: torch.Tensor):
-    loss = 0
-    n = len(fake_outputs)
-    for dg in fake_outputs:
-        dg = dg.float()
-        loss += (dg ** 2).mean()
+def generator_adversarial_loss(fake_logits: torch.Tensor):
+    loss = 0.0
+    n = len(fake_logits)
+    for dg in fake_logits:
+        loss += - dg.mean()
+    return loss / n
+
+
+def discriminator_san_loss(real_dirs: torch.Tensor, fake_dirs: torch.Tensor):
+    loss = 0.0
+    n = min(len(real_dirs), len(fake_dirs))
+    for dr, df in zip(real_dirs, fake_dirs):
+        real_loss = -dr.mean()
+        fake_loss = df.mean()
+        loss += real_loss + fake_loss
     return loss / n
 
     

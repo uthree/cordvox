@@ -7,6 +7,19 @@ def get_padding(kernel_size, dilation=1):
     return int((kernel_size*dilation - dilation)/2)
 
 
+class SANLayer(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.weights = nn.Parameter(torch.randn(1, channels, 1))
+
+    def forward(self, x: torch.Tensor):
+        x = x.flatten(start_dim=2)
+        w = F.normalize(self.weights, dim=1)
+        logits = (x * w).sum(dim=1)
+        out_dir = (x.detach() * w).sum(dim=1).mean()
+        return logits, out_dir
+    
+
 class DiscriminatorP(nn.Module):
     def __init__(self, period, kernel_size=5, stride=3, channels=32, channels_mul=2, num_layers=4, max_channels=256, use_spectral_norm=False):
         super().__init__()
@@ -23,9 +36,9 @@ class DiscriminatorP(nn.Module):
             convs.append(nn.Conv2d(c, c_next, (k, 1), (s, 1), (get_padding(5, 1), 0)))
             c = c_next
         self.convs = nn.ModuleList([norm_f(c) for c in convs])
-        self.post = norm_f(nn.Conv2d(c, 1, 1, 1, 0, bias=False))
+        self.post = SANLayer(c)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         fmap = []
 
         # 1d to 2d
@@ -36,14 +49,14 @@ class DiscriminatorP(nn.Module):
             t = t + n_pad
         x = x.view(b, c, t // self.period, self.period)
 
+        # feedforward
         for l in self.convs:
             x = l(x)
             x = F.leaky_relu(x, 0.1)
             fmap.append(x)
-        x = self.post(x)
-        fmap.append(x)
 
-        return x, fmap
+        logits, dirs = self.post(x)
+        return logits, dirs, fmap
 
 
 class MultiPeriodicDiscriminator(nn.Module):
@@ -69,11 +82,13 @@ class MultiPeriodicDiscriminator(nn.Module):
         x = x.unsqueeze(1)
         feats = []
         logits = []
+        dirs = []
         for d in self.sub_discs:
-            logit, fmap = d(x)
+            logit, dir, fmap = d(x)
             logits.append(logit)
+            dirs.append(dir)
             feats += fmap
-        return logits, feats
+        return logits, dirs, feats
 
 
 class DiscriminatorR(nn.Module):
@@ -85,7 +100,7 @@ class DiscriminatorR(nn.Module):
         self.n_fft = resolution * 4
         for _ in range(num_layers):
             self.convs.append(norm_f(nn.Conv2d(channels, channels, (7, 3), (2, 1), (2, 1))))
-        self.post = norm_f(nn.Conv2d(channels, 1, 1, 1, 0, bias=False))
+        self.post = SANLayer(channels)
 
     def spectrogram(self, x):
         # spectrogram
@@ -101,9 +116,8 @@ class DiscriminatorR(nn.Module):
             x = l(x)
             F.leaky_relu(x, 0.1)
             feats.append(x)
-        x = self.post(x)
-        feats.append(x)
-        return x, feats
+        logit, dir = self.post(x)
+        return logit, dir, feats
 
 
 class MultiResolutionDiscriminator(nn.Module):
@@ -121,11 +135,13 @@ class MultiResolutionDiscriminator(nn.Module):
     def forward(self, x):
         feats = []
         logits = []
+        dirs = []
         for d in self.sub_discs:
-            logit, fmap = d(x)
+            logit, dir, fmap = d(x)
             logits.append(logit)
+            dirs.append(dir)
             feats += fmap
-        return logits, feats
+        return logits, dirs, feats
 
 
 class Discriminator(nn.Module):
@@ -136,6 +152,12 @@ class Discriminator(nn.Module):
 
     # x: [BatchSize, Length(waveform)]
     def forward(self, x):
-        mpd_logits, mpd_feats = self.MPD(x)
-        mrd_logits, mrd_feats = self.MRD(x)
-        return mpd_logits + mrd_logits, mpd_feats + mrd_feats
+        mpd_logits, mpd_dirs, mpd_feats = self.MPD(x)
+        mrd_logits, mrd_dirs, mrd_feats = self.MRD(x)
+        
+        logits = mpd_logits + mrd_logits
+        dirs = mpd_dirs + mrd_dirs
+        feats = mpd_feats + mrd_feats
+
+        return logits, dirs, feats
+
