@@ -22,7 +22,7 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=16,
+            num_harmonics=8,
             min_frequency=20.0,
             noise_scale=0.03
         ):
@@ -33,7 +33,7 @@ class HarmonicOscillator(nn.Module):
         self.num_harmonics = num_harmonics
         self.noise_scale = noise_scale
 
-        self.output_channels = num_harmonics
+        self.weights = nn.Parameter(torch.ones(1, num_harmonics, 1))
 
     def forward(self, f0):
         with torch.no_grad():
@@ -44,8 +44,8 @@ class HarmonicOscillator(nn.Module):
             integrated = torch.cumsum(fs / self.sample_rate, dim=2)
             phi = torch.rand(1, self.num_harmonics, 1, device=f0.device)
             rad = 2 * math.pi * ((integrated + phi) % 1)
-            harmonics = torch.sin(rad)
-            noise = torch.randn_like(harmonics)
+            harmonics = (torch.sin(rad) * self.weights).sum(dim=1, keepdim=True)
+            noise = torch.randn(f0.shape[0], 1, f0.shape[2], device=f0.device)
             voiced_part = harmonics + noise * self.noise_scale
             unvoiced_part = noise * 0.333
             source = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
@@ -67,8 +67,6 @@ class CyclicNoiseOscillator(nn.Module):
         self.min_frequency = min_frequency
         self.base_frequency = base_frequency
         self.beta = beta
-
-        self.output_channels = 1
 
         self.kernel_size = int(4.6 * self.sample_rate / self.base_frequency)
         self.pad_size = self.kernel_size - 1
@@ -177,7 +175,6 @@ class FilterNet(nn.Module):
             self,
             n_mels=80,
             upsample_initial_channels=512,
-            source_channels=1,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
             resblock_dilations=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
@@ -201,7 +198,7 @@ class FilterNet(nn.Module):
 
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
         ch_last = upsample_initial_channels//(2**(self.num_upsamples))
-        self.source_pre = weight_norm(nn.Conv1d(source_channels, ch_last, 7, 1, 3))
+        self.source_pre = weight_norm(nn.Conv1d(1, ch_last, 7, 1, 3))
         self.ups = nn.ModuleList()
         downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
@@ -259,7 +256,7 @@ class Generator(nn.Module):
         else:
             raise "Invalid source_type"
         self.source_net = source_net(**source)
-        self.filter_net = FilterNet(**filter, source_channels=self.source_net.output_channels)
+        self.filter_net = FilterNet(**filter)
 
     def forward(self, x, f0):
         source = self.source_net(f0)
