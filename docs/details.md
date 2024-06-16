@@ -7,6 +7,7 @@ F0と同じ周波数の正弦波を生成するオシレータを搭載。ソー
 
 ### 損失関数
 メルスペクトル損失をMultiscale STFT Lossに置き換え。高周波成分の解像度を高くする。
+学習初期はDiscriminatorの処理を省略しても問題ない。
 
 ### MultiResolutionalDiscriminator
 UnivNetに採用されている振幅スペクトログラムを二次元畳み込みするDiscriminator。
