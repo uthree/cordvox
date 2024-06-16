@@ -16,7 +16,7 @@ class SANLayer(nn.Module):
         x = x.flatten(start_dim=2)
         w = F.normalize(self.weights, dim=1)
         logits = (x * w.detach()).sum(dim=1)
-        out_dir = (x.detach() * w).sum(dim=1).mean()
+        out_dir = (x.detach() * w).sum(dim=1)
         return logits, out_dir
     
 
