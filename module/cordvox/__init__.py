@@ -8,7 +8,7 @@ import lightning as L
 from .generator import Generator
 from .discriminator import Discriminator
 
-from module.utils.loss import feature_matching_loss, multiscale_stft_loss, generator_adversarial_loss, discriminator_adversarial_loss, discriminator_san_loss
+from module.utils.loss import feature_matching_loss, multiscale_stft_loss, generator_adversarial_loss, discriminator_adversarial_loss
 
 
 class Cordvox(L.LightningModule):
@@ -31,6 +31,7 @@ class Cordvox(L.LightningModule):
         G, D = self.generator, self.discriminator
         
         fake = G(mel, f0).squeeze(1)
+
         loss_stft = multiscale_stft_loss(wf, fake)
 
         if self.discriminator_active:
@@ -55,9 +56,7 @@ class Cordvox(L.LightningModule):
             fake = fake.detach()
             logits_fake, dirs_fake,  _ = D(fake)
             logits_real, dirs_real, _ = D(wf)
-            loss_D_adv = discriminator_adversarial_loss(logits_real, logits_fake)
-            loss_D_san = discriminator_san_loss(dirs_real, dirs_fake)
-            loss_D = loss_D_adv + loss_D_san
+            loss_D = discriminator_adversarial_loss(logits_real, logits_fake, dirs_real, dirs_fake)
 
             # backward D.
             self.manual_backward(loss_D)
@@ -70,8 +69,7 @@ class Cordvox(L.LightningModule):
                 "MS-STFT": loss_stft.item(),
                 "Generator Adversarial": loss_adv.item(),
                 "Feature Matching": loss_feat.item(),
-                "Discriminator Adversarial": loss_D_adv.item(),
-                "SAN": loss_D_san.item(),
+                "Discriminator Adversarial": loss_D.item(),
             }
         else:
             loss_dict = {

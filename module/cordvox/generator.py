@@ -22,7 +22,7 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=8,
+            num_harmonics=1,
             min_frequency=20.0,
             noise_scale=0.03
         ):
@@ -44,7 +44,7 @@ class HarmonicOscillator(nn.Module):
             integrated = torch.cumsum(fs / self.sample_rate, dim=2)
             phi = torch.rand(1, self.num_harmonics, 1, device=f0.device)
             rad = 2 * math.pi * ((integrated + phi) % 1)
-            harmonics = (torch.sin(rad) * self.weights).sum(dim=1, keepdim=True)
+            harmonics = (torch.sin(rad) * F.normalize(self.weights)).sum(dim=1, keepdim=True)
             noise = torch.randn(f0.shape[0], 1, f0.shape[2], device=f0.device)
             voiced_part = harmonics + noise * self.noise_scale
             unvoiced_part = noise * 0.333
@@ -58,7 +58,7 @@ class CyclicNoiseOscillator(nn.Module):
             sample_rate=24000,
             frame_size=480,
             min_frequency=20.0,
-            base_frequency=100.0,
+            base_frequency=110.0,
             beta=0.78
         ):
         super().__init__()
@@ -90,9 +90,9 @@ class CyclicNoiseOscillator(nn.Module):
             impluse = sawtooth - sawtooth.roll(1, dims=(2))
             noise = torch.randn(N, 1, L, device=f0.device)
             kernel = self.generate_kernel().to(f0.device)
-            impluse = F.pad(impluse, (self.pad_size, 0))
+            impluse = F.pad(impluse, (0, self.pad_size))
             cyclic_noise = F.conv1d(impluse, kernel)
-            source = voiced_mask * cyclic_noise + (1 - voiced_mask) * noise
+            source = cyclic_noise * voiced_mask + (1 - voiced_mask) * noise
         return source
     
 
@@ -107,9 +107,9 @@ class ResBlock1(nn.Module):
 
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.gelu(x)
+            xt = F.silu(x)
             xt = c1(xt)
-            xt = F.gelu(xt)
+            xt = F.silu(xt)
             xt = c2(xt)
             x = x + xt
         return x
@@ -124,7 +124,7 @@ class ResBlock2(nn.Module):
 
     def forward(self, x):
         for c1 in self.convs1:
-            xt = F.gelu(x)
+            xt = F.silu(x)
             xt = c1(xt)
             x = x + xt
         return x
@@ -143,9 +143,9 @@ class ResBlock3(nn.Module):
 
     def forward(self, x):
         for c1, c2, c3 in zip(self.convs1, self.convs2, self.convs3):
-            xt = F.gelu(x)
+            xt = F.silu(x)
             xt = c1(xt)
-            xt = F.gelu(xt)
+            xt = F.silu(xt)
             xt = c2(xt)
             xs = c3(x)
             x = x + xt * xs
@@ -163,7 +163,7 @@ class ResBlock4(nn.Module):
 
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.gelu(x)
+            xt = F.silu(x)
             xt = c1(xt)
             xs = c2(x)
             x = x + xt * xs
@@ -224,13 +224,13 @@ class FilterNet(nn.Module):
         s = self.source_pre(source)
         for i in range(self.num_upsamples):
             skips.append(s)
-            s = F.gelu(s)
+            s = F.silu(s)
             s = self.downs[i](s)
         skips = list(reversed(skips))
 
         x = self.conv_pre(x) + s
         for i in range(self.num_upsamples):
-            x = F.gelu(x)
+            x = F.silu(x)
             x = self.ups[i](x)
             x = x + skips[i]
             xs = None
@@ -240,7 +240,7 @@ class FilterNet(nn.Module):
                 else:
                     xs += self.resblocks[i*self.num_kernels+j](x)
             x = xs / self.num_kernels
-        x = F.gelu(x)
+        x = F.silu(x)
         x = self.conv_post(x)
         x = torch.tanh(x)
         return x

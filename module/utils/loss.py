@@ -37,24 +37,48 @@ def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[16, 32, 64, 1
     return loss / num_scales
 
 
-def oscillate_harmonics(f0: torch.Tensor, frame_size: int, sample_rate: float, num_harmonics: int, min_frequency):
-    H = (torch.arange(num_harmonics + 1, device=f0.device) + 1)[None, :, None]
+def oscillate_harmonics(f0: torch.Tensor, frame_size: int, sample_rate: float, num_harmonics: int):
+    H = (torch.arange(num_harmonics, device=f0.device) + 1)[None, :, None]
+    N = f0.shape[0]
+    phi = torch.rand(N, num_harmonics, 1, device=f0.device)
     f0 = F.interpolate(f0, scale_factor=frame_size, mode='linear') / sample_rate
-    rad = torch.cumsum(f0, dim=2)
+    rad = torch.cumsum(f0, dim=2) + phi
     harmonics = torch.sin(2.0 * math.pi * ((H * rad) % 1.0))
     return harmonics
+
+
+def masked_stft_loss(
+        x: torch.Tensor,
+        y: torch.Tensor,
+        mask_signal: torch.Tensor,
+        hop_length: 256,
+        n_fft: int = 1024,
+        eps: float = 1e-6,
+    ):
+    '''
+        shapes:
+        x: [N, L * frame_size]
+        y: [N, L * frame_size]
+        f0: [N, 1, frame_size]
+
+        Output: []
+    '''
+    window = torch.hann_window(n_fft, device=x.device)
+    x_spec = torch.stft(x, n_fft, hop_length, return_complex=True, window=window).abs()
+    y_spec = torch.stft(y, n_fft, hop_length, return_complex=True, window=window).abs()
+    m_spec = torch.stft(mask_signal, n_fft, hop_length, return_complex=True, window=window).abs()
+    loss = (torch.log((y_spec * m_spec + eps) / (x_spec * m_spec + eps)) ** 2).mean()
+    return loss
 
 
 def harmonic_masked_stft_loss(
         x: torch.Tensor,
         y: torch.Tensor,
         f0: torch.Tensor,
-        frame_size: int = 480,
         sample_rate: float = 24000.0,
-        n_fft: int = 1920,
-        num_harmonics: int = 7,
-        min_frequency: float = 20.0,
-        eps: float = 1e-6
+        frame_size: int = 480,
+        scales = [16, 32, 64, 128, 256],
+        num_harmonics: int = 16,
     ):
     '''
     shapes:
@@ -64,44 +88,35 @@ def harmonic_masked_stft_loss(
 
         Output: []
     '''
-    window = torch.hann_window(n_fft, device=x.device)
-    x_spec = torch.stft(x, n_fft, frame_size, return_complex=True, window=window).abs()
-    y_spec = torch.stft(y, n_fft, frame_size, return_complex=True, window=window).abs()
-    harmonics = oscillate_harmonics(f0, frame_size, sample_rate, num_harmonics, min_frequency).sum(dim=1)
-    h_spec = torch.stft(harmonics, n_fft, frame_size, return_complex=True, window=window).abs()
-    loss = (torch.log((y_spec * h_spec + eps) / (x_spec * h_spec + eps)) ** 2).mean()
-    return loss
+    mask_signal = oscillate_harmonics(f0, frame_size, sample_rate, num_harmonics).sum(dim=1)
+    num_scales = len(scales)
+    loss = 0.0
+    for scale in scales:
+        hop_length = scale
+        n_fft = scale * 4
+        loss += masked_stft_loss(x, y, mask_signal, hop_length, n_fft)
+    return loss / num_scales
 
 
-def discriminator_adversarial_loss(real_logits: torch.Tensor, fake_logits: torch.Tensor):
+def discriminator_adversarial_loss(real_logits, fake_logits, real_dirs, fake_dirs):
     loss = 0.0
     n = min(len(real_logits), len(fake_logits))
-    for dr, df in zip(real_logits, fake_logits):
-        real_loss = F.softplus(1.0 - dr).mean()
-        fake_loss = F.softplus(1.0 + df).mean()
+    for dr, df, lr, lf in zip(real_dirs, fake_dirs, real_logits, fake_logits):
+        real_loss = F.softplus(1.0 - lr).mean() - dr.mean()
+        fake_loss = F.softplus(1.0 + lf).mean() + df.mean()
         loss += real_loss + fake_loss
     return loss / n
 
 
-def generator_adversarial_loss(fake_logits: torch.Tensor):
+def generator_adversarial_loss(fake_logits):
     loss = 0.0
     n = len(fake_logits)
     for dg in fake_logits:
         loss += F.softplus(1.0 - dg).mean()
     return loss / n
 
-
-def discriminator_san_loss(real_dirs: torch.Tensor, fake_dirs: torch.Tensor):
-    loss = 0.0
-    n = min(len(real_dirs), len(fake_dirs))
-    for dr, df in zip(real_dirs, fake_dirs):
-        real_loss = -dr.mean()
-        fake_loss = df.mean()
-        loss += real_loss + fake_loss
-    return loss / n
-
     
-def feature_matching_loss(fmap_real: torch.Tensor, fmap_fake: torch.Tensor):
+def feature_matching_loss(fmap_real, fmap_fake):
     loss = 0
     n = min(len(fmap_real), len(fmap_fake))
     for r, f in zip(fmap_real, fmap_fake):
