@@ -100,20 +100,18 @@ def harmonic_masked_stft_loss(
 
 def discriminator_adversarial_loss(real_logits, fake_logits, real_dirs, fake_dirs):
     loss = 0.0
-    n = min(len(real_logits), len(fake_logits))
     for dr, df, lr, lf in zip(real_dirs, fake_dirs, real_logits, fake_logits):
         real_loss = ((lr + 1.0) ** 2).mean() - dr.mean()
         fake_loss = ((lf - 1.0) ** 2).mean() + df.mean()
         loss += real_loss + fake_loss
-    return loss / n
+    return loss
 
 
 def generator_adversarial_loss(fake_logits):
     loss = 0.0
-    n = len(fake_logits)
     for dg in fake_logits:
         loss += ((dg + 1.0) ** 2).mean()
-    return loss / n
+    return loss
 
     
 def feature_matching_loss(fmap_real, fmap_fake):
