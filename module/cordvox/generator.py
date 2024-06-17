@@ -1,4 +1,5 @@
 import math
+import random
 
 import torch
 import torch.nn as nn
@@ -22,7 +23,7 @@ class HarmonicOscillator(nn.Module):
             self,
             sample_rate=24000,
             frame_size=480,
-            num_harmonics=1,
+            num_harmonics=8,
             min_frequency=20.0,
             noise_scale=0.03
         ):
@@ -128,47 +129,7 @@ class ResBlock2(nn.Module):
             xt = c1(xt)
             x = x + xt
         return x
-    
 
-class ResBlock3(nn.Module):
-    def __init__(self, channels, kernel_size=3, dilations=[1, 3, 5]):
-        super().__init__()
-        self.convs1 = nn.ModuleList()
-        self.convs2 = nn.ModuleList()
-        self.convs3 = nn.ModuleList()
-        for d in dilations:
-            self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
-            self.convs2.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, 1), 1)))
-            self.convs3.append(weight_norm(nn.Conv1d(channels, channels, 1)))
-
-    def forward(self, x):
-        for c1, c2, c3 in zip(self.convs1, self.convs2, self.convs3):
-            xt = F.silu(x)
-            xt = c1(xt)
-            xt = F.silu(xt)
-            xt = c2(xt)
-            xs = c3(x)
-            x = x + xt * xs
-        return x
-    
-
-class ResBlock4(nn.Module):
-    def __init__(self, channels, kernel_size=3, dilations=[1, 3]):
-        super().__init__()
-        self.convs1 = nn.ModuleList()
-        self.convs2 = nn.ModuleList()
-        for d in dilations:
-            self.convs1.append(weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, get_padding(kernel_size, d), d)))
-            self.convs2.append(weight_norm(nn.Conv1d(channels, channels, 1)))
-
-    def forward(self, x):
-        for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.silu(x)
-            xt = c1(xt)
-            xs = c2(x)
-            x = x + xt * xs
-        return x
-    
 
 class FilterNet(nn.Module):
     def __init__(
@@ -189,10 +150,6 @@ class FilterNet(nn.Module):
             resblock = ResBlock1
         elif resblock_type == "2":
             resblock = ResBlock2
-        elif resblock_type == "3":
-            resblock = ResBlock3
-        elif resblock_type == "4":
-            resblock = ResBlock4
         else:
             raise "invalid resblock type"
 
