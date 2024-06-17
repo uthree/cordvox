@@ -32,7 +32,12 @@ class Cordvox(L.LightningModule):
         
         fake = G(mel, f0).squeeze(1)
 
-        loss_stft = multiscale_stft_loss(wf, fake)
+        if self.discriminator_active:
+            scales = [256, 512]
+        else:
+            scales = [16, 32, 64, 128, 256, 512]
+
+        loss_stft = multiscale_stft_loss(wf, fake, scales)
 
         if self.discriminator_active:
             logits, _, feats_fake = D(fake)
@@ -44,25 +49,26 @@ class Cordvox(L.LightningModule):
             loss_G = loss_stft
 
         # backward G.
+        opt_g.zero_grad()
+        self.toggle_optimizer(opt_g)
         self.manual_backward(loss_G)
         nn.utils.clip_grad_norm_(G.parameters(), 1.0, 2.0)
         opt_g.step()
-        opt_g.zero_grad()
         self.untoggle_optimizer(opt_g)
 
         if self.discriminator_active:
             # train discriminator
             self.toggle_optimizer(opt_d)
             fake = fake.detach()
-            logits_fake, dirs_fake,  _ = D(fake)
+            logits_fake, dirs_fake, _ = D(fake)
             logits_real, dirs_real, _ = D(wf)
             loss_D = discriminator_adversarial_loss(logits_real, logits_fake, dirs_real, dirs_fake)
 
             # backward D.
+            opt_d.zero_grad()
             self.manual_backward(loss_D)
             nn.utils.clip_grad_norm_(D.parameters(), 1.0, 2.0)
             opt_d.step()
-            opt_d.zero_grad()
             self.untoggle_optimizer(opt_d)
 
             loss_dict = {

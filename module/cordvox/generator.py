@@ -44,11 +44,12 @@ class HarmonicOscillator(nn.Module):
             integrated = torch.cumsum(fs / self.sample_rate, dim=2)
             phi = torch.rand(1, self.num_harmonics, 1, device=f0.device)
             rad = 2 * math.pi * ((integrated + phi) % 1)
-            harmonics = (torch.sin(rad) * F.normalize(self.weights)).sum(dim=1, keepdim=True)
-            noise = torch.randn(f0.shape[0], 1, f0.shape[2], device=f0.device)
+            noise = torch.randn_like(rad)
+            harmonics = torch.sin(rad) * voiced_mask + noise * self.noise_scale
             voiced_part = harmonics + noise * self.noise_scale
             unvoiced_part = noise * 0.333
             source = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
+            source = (source * F.softmax(self.weights, dim=1)).sum(dim=1, keepdim=True)
         return source
 
 
