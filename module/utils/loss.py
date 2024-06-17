@@ -118,9 +118,8 @@ def generator_adversarial_loss(fake_logits):
     
 def feature_matching_loss(fmap_real, fmap_fake):
     loss = 0
-    n = min(len(fmap_real), len(fmap_fake))
     for r, f in zip(fmap_real, fmap_fake):
         f = f.float()
         r = r.float()
-        loss += F.huber_loss(f, r)
-    return loss / n
+        loss += F.l1_loss(f, r)
+    return loss
