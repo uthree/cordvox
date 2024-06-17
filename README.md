@@ -1,5 +1,5 @@
 # cordvox
-Unified DSP and HiFi-GAN
+Experiments of neural vocoder
 
 # Installation
 ```sh
