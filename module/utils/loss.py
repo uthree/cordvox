@@ -106,7 +106,7 @@ def discriminator_adversarial_loss(real_logits, fake_logits, real_dirs, fake_dir
         fake_loss = F.relu(1.0 + lf).mean() + df.mean()
         loss += real_loss + fake_loss
         n += 1
-    return loss / n
+    return loss
 
 
 def generator_adversarial_loss(fake_logits):
@@ -115,14 +115,13 @@ def generator_adversarial_loss(fake_logits):
     for dg in fake_logits:
         fake_loss = (-dg).mean()
         loss += fake_loss
-    return loss / n
+    return loss
 
     
 def feature_matching_loss(fmap_real, fmap_fake):
     loss = 0
-    n = min(len(fmap_real), len(fmap_fake))
     for r, f in zip(fmap_real, fmap_fake):
         f = f.float()
         r = r.float()
         loss += F.l1_loss(f, r)
-    return loss / n
+    return loss
