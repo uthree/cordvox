@@ -109,9 +109,9 @@ class ResBlock1(nn.Module):
 
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.silu(x)
+            xt = F.leaky_relu(x, 0.1)
             xt = c1(xt)
-            xt = F.silu(xt)
+            xt = F.leaky_relu(xt, 0.1)
             xt = c2(xt)
             x = x + xt
         return x
@@ -126,7 +126,7 @@ class ResBlock2(nn.Module):
 
     def forward(self, x):
         for c1 in self.convs1:
-            xt = F.silu(x)
+            xt = F.leaky_relu(x, 0.1)
             xt = c1(xt)
             x = x + xt
         return x
@@ -182,7 +182,7 @@ class FilterNet(nn.Module):
         x = self.conv_pre(x)
         for i in range(self.num_upsamples):
             x = self.ups[i](x) + self.source_convs[i](source)
-            x = F.silu(x)
+            x = F.leaky_relu(x, 0.1)
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
@@ -190,7 +190,7 @@ class FilterNet(nn.Module):
                 else:
                     xs += self.resblocks[i*self.num_kernels+j](x)
             x = xs / self.num_kernels
-        x = F.silu(x)
+        x = F.leaky_relu(x, 0.1)
         x = self.conv_post(x)
         x = torch.tanh(x)
         return x

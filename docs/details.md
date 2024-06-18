@@ -11,10 +11,6 @@ F0と同じ周波数の正弦波を生成するオシレータを搭載。ソー
 ### MultiResolutionalDiscriminator
 UnivNetに採用されている振幅スペクトログラムを二次元畳み込みするDiscriminator。
 
-### 活性化関数
-EVA-GAN(https://arxiv.org/abs/2402.00892)を参考に
-LeakyReLUはなめらかではないのでより滑らかなSiLUに変更。
-
 ### Cyclic Noise
 Cyclic Noiseを生成するオシレータを試験的に実装。
 試してみたがうまく周期成分を抽出できず、HiFi-GAN側のアップサンプリング層で周期成分を生成することになってしまう。
