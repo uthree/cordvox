@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -154,17 +155,18 @@ class FilterNet(nn.Module):
             raise "invalid resblock type"
 
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
-        ch_last = upsample_initial_channels//(2**(self.num_upsamples))
-        self.source_pre = weight_norm(nn.Conv1d(1, ch_last, 7, 1, 3))
+        self.source_convs = nn.ModuleList()
         self.ups = nn.ModuleList()
-        downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
             c1 = upsample_initial_channels//(2**i)
             c2 = upsample_initial_channels//(2**(i+1))
             p = (k-u)//2
-            downs.append(weight_norm(nn.Conv1d(c2, c1, k, u, p)))
+            if i == len(upsample_rates) - 1:
+                self.source_convs.append(weight_norm(nn.Conv1d(1, c2, 7, 1, 3)))
+            else:
+                up_prod = int(np.prod(upsample_rates[i+1:]))
+                self.source_convs.append(weight_norm(nn.Conv1d(1, c2, up_prod * 2, up_prod, up_prod // 2)))
             self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
-        self.downs = nn.ModuleList(reversed(downs))
         
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
@@ -177,19 +179,10 @@ class FilterNet(nn.Module):
 
 
     def forward(self, x, source):
-        skips = []
-        s = self.source_pre(source)
+        x = self.conv_pre(x)
         for i in range(self.num_upsamples):
-            skips.append(s)
-            s = F.silu(s)
-            s = self.downs[i](s)
-        skips = list(reversed(skips))
-
-        x = self.conv_pre(x) + s
-        for i in range(self.num_upsamples):
+            x = self.ups[i](x) + self.source_convs[i](source)
             x = F.silu(x)
-            x = self.ups[i](x)
-            x = x + skips[i]
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:

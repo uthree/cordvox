@@ -8,7 +8,7 @@ def safe_log(x, eps=1e-6):
     return torch.log(x + eps)
 
 
-def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[256, 512], alpha=1.0, beta=1.0):
+def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[4, 8, 16, 32, 64, 128, 256, 512], alpha=1.0, beta=1.0):
     '''
     shapes:
         x: [N, Waveform Length]
@@ -100,25 +100,29 @@ def harmonic_masked_stft_loss(
 
 def discriminator_adversarial_loss(real_logits, fake_logits, real_dirs, fake_dirs):
     loss = 0.0
+    n = 0
     for lr, lf, dr, df,  in zip(real_logits, fake_logits, real_dirs, fake_dirs):
         real_loss = F.relu(1.0 - lr).mean() - dr.mean()
         fake_loss = F.relu(1.0 + lf).mean() + df.mean()
         loss += real_loss + fake_loss
-    return loss
+        n += 1
+    return loss / n
 
 
 def generator_adversarial_loss(fake_logits):
     loss = 0.0
+    n = len(fake_logits)
     for dg in fake_logits:
         fake_loss = (-dg).mean()
         loss += fake_loss
-    return loss
+    return loss / n
 
     
 def feature_matching_loss(fmap_real, fmap_fake):
     loss = 0
+    n = min(len(fmap_real), len(fmap_fake))
     for r, f in zip(fmap_real, fmap_fake):
         f = f.float()
         r = r.float()
         loss += F.l1_loss(f, r)
-    return loss
+    return loss / n

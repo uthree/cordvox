@@ -32,19 +32,14 @@ class Cordvox(L.LightningModule):
         
         fake = G(mel, f0).squeeze(1)
 
-        if self.discriminator_active:
-            scales = [256, 512]
-        else:
-            scales = [8, 16, 32, 64, 128, 256, 512]
-
-        loss_stft = multiscale_stft_loss(wf, fake, scales)
+        loss_stft = multiscale_stft_loss(wf, fake)
 
         if self.discriminator_active:
             logits, _, feats_fake = D(fake)
             _, _, feats_real = D(wf)
             loss_adv = generator_adversarial_loss(logits)
             loss_feat = feature_matching_loss(feats_real, feats_fake)
-            loss_G = loss_stft * 45.0 + loss_adv + loss_feat
+            loss_G = loss_stft + loss_adv + loss_feat
         else:
             loss_G = loss_stft
 
