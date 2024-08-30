@@ -41,8 +41,8 @@ def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[8, 16, 32, 64
 def discriminator_adversarial_loss(real_logits, fake_logits, real_dirs, fake_dirs):
     loss = 0.0
     for lr, lf, dr, df,  in zip(real_logits, fake_logits, real_dirs, fake_dirs):
-        real_loss = ((lr - 1.0) ** 2).mean() - dr.mean()
-        fake_loss = ((lf + 1.0) ** 2).mean() + df.mean()
+        real_loss = (F.softplus(1 - lr) ** 2).mean() + (F.softplus(1 - dr) ** 2).mean()
+        fake_loss = (F.softplus(lf) ** 2).mean() - (F.softplus(1 - df) ** 2).mean()
         loss += real_loss + fake_loss
     return loss
 
@@ -50,7 +50,7 @@ def discriminator_adversarial_loss(real_logits, fake_logits, real_dirs, fake_dir
 def generator_adversarial_loss(fake_logits):
     loss = 0.0
     for dg in fake_logits:
-        fake_loss = ((dg - 1.0) ** 2).mean()
+        fake_loss = (F.softplus(1 - dg) ** 2).mean()
         loss += fake_loss
     return loss
 
