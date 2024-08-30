@@ -7,8 +7,7 @@ import lightning as L
 
 from .generator import Generator
 from .discriminator import Discriminator
-
-from module.utils.loss import feature_matching_loss, multiscale_stft_loss, generator_adversarial_loss, discriminator_adversarial_loss
+from .loss import feature_matching_loss, multiscale_stft_loss, generator_adversarial_loss, discriminator_adversarial_loss
 
 
 class Cordvox(L.LightningModule):

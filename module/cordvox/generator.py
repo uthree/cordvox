@@ -21,52 +21,83 @@ def init_weights(m, mean=0.0, std=0.01):
 class HarmonicOscillator(nn.Module):
     def __init__(
             self,
-            sample_rate=24000,
-            frame_size=480,
+            sample_rate,
+            frame_size,
             num_harmonics=8,
-            min_frequency=20.0,
             noise_scale=0.03
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
-        self.min_frequency = min_frequency
         self.num_harmonics = num_harmonics
         self.noise_scale = noise_scale
 
         self.weights = nn.Parameter(torch.ones(1, num_harmonics, 1))
 
-    def forward(self, f0):
+    def forward(self, f0, uv):
+        '''
+        Args:
+            f0: fundamental frequency shape=[N, 1, L]
+            uv: unvoiced=0 / voiced=1 flag, shape=[N, 1, L]
+        Output
+            shape=[N, 1, L * frame_size]
+        '''
         with torch.no_grad():
             f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
-            voiced_mask = (f0 >= self.min_frequency).to(torch.float)
+            voiced_mask = F.interpolate(uv, scale_factor=self.frame_size)
             mul = (torch.arange(self.num_harmonics, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
             fs = f0 * mul
             integrated = torch.cumsum(fs / self.sample_rate, dim=2)
-            phi = torch.rand(1, self.num_harmonics, 1, device=f0.device)
-            rad = 2 * math.pi * ((integrated + phi) % 1)
+            rad = 2 * math.pi * (integrated % 1)
             noise = torch.randn_like(rad)
             harmonics = torch.sin(rad) * voiced_mask + noise * self.noise_scale
             voiced_part = harmonics + noise * self.noise_scale
             unvoiced_part = noise * 0.333
             source = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
-            source = (source * F.softmax(self.weights, dim=1)).sum(dim=1, keepdim=True)
+            source = (source * F.normalize(self.weights, p=2.0, dim=1)).sum(dim=1, keepdim=True)
+        return source
+    
+
+class ImpulseOscillator(nn.Module):
+    def __init__(
+            self,
+            sample_rate,
+            frame_size,
+        ):
+        super().__init__()
+        self.sample_rate = sample_rate
+        self.frame_size = frame_size
+
+    def forward(self, f0, uv):
+        '''
+        Args:
+            f0: fundamental frequency shape=[N, 1, L]
+            uv: unvoiced=0 / voiced=1 flag, shape=[N, 1, L]
+        Output
+            shape=[N, 1, L * frame_size]
+        '''
+        with torch.no_grad():
+            f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
+            voiced_mask = F.interpolate(uv, scale_factor=self.frame_size)
+            rad = torch.cumsum(-f0 / self.sample_rate, dim=2)
+            sawtooth = rad % 1.0
+            impluse = sawtooth - sawtooth.roll(1, dims=(2))
+            noise = torch.randn_like(impluse) * 0.333
+            source = impluse * voiced_mask + noise * (1 - voiced_mask)
         return source
 
 
 class CyclicNoiseOscillator(nn.Module):
     def __init__(
             self,
-            sample_rate=24000,
-            frame_size=480,
-            min_frequency=20.0,
-            base_frequency=110.0,
+            sample_rate,
+            frame_size,
+            base_frequency=440.0,
             beta=0.78
         ):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_size = frame_size
-        self.min_frequency = min_frequency
         self.base_frequency = base_frequency
         self.beta = beta
 
@@ -76,17 +107,23 @@ class CyclicNoiseOscillator(nn.Module):
     def generate_kernel(self):
         t = torch.arange(0, self.kernel_size)[None, None, :]
         decay = torch.exp(-t * self.base_frequency / self.beta / self.sample_rate)
-        decay = decay.flip(dims=[2])
         noise = torch.randn_like(decay)
         kernel = noise * decay
         return kernel
 
-    def forward(self, f0):
+    def forward(self, f0, uv):
+        '''
+        Args:
+            f0: fundamental frequency shape=[N, 1, L]
+            uv: unvoiced=0 / voiced=1 flag, shape=[N, 1, L]
+        Output
+            shape=[N, 1, L * frame_size]
+        '''
         with torch.no_grad():
             f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
             N = f0.shape[0]
             L = f0.shape[2]
-            voiced_mask = (f0 >= self.min_frequency).to(torch.float)
+            voiced_mask = F.interpolate(uv, scale_factor=self.frame_size)
             rad = torch.cumsum(-f0 / self.sample_rate, dim=2)
             sawtooth = rad % 1.0
             impluse = sawtooth - sawtooth.roll(1, dims=(2))
@@ -200,15 +237,18 @@ class Generator(nn.Module):
     def __init__(self, source, filter, source_type="harmonic"):
         super().__init__()
         if source_type == "harmonic":
-            source_net = HarmonicOscillator
+            SourceNet = HarmonicOscillator
         elif source_type == "cyclic_noise":
-            source_net = CyclicNoiseOscillator
+            SourceNet = CyclicNoiseOscillator
+        elif source_type == "impulse":
+            SourceNet = ImpulseOscillator
         else:
             raise "Invalid source_type"
-        self.source_net = source_net(**source)
+        self.source_net = SourceNet(**source)
         self.filter_net = FilterNet(**filter)
 
     def forward(self, x, f0):
-        source = self.source_net(f0)
+        uv = (f0 > 0).to(f0.dtype)
+        source = self.source_net(f0, uv)
         output = self.filter_net(x, source)
         return output

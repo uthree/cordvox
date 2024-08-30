@@ -16,7 +16,7 @@
     "data_module": {
         "cache_dir": "dataset_cache",
         "batch_size": 16,
-        "num_workers": 16
+        "num_workers": 1
     },
     "save": {
         "interval": 400,
@@ -48,9 +48,9 @@
                 "num_layers": 4
             },
             "mrd": {
-                "resolutions": [128, 256, 512],
+                "resolutions": [120, 240, 60],
                 "channels": 32,
-                "num_layers": 6
+                "num_layers": 4
             }
         }
     }
