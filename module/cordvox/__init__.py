@@ -66,7 +66,7 @@ class Cordvox(L.LightningModule):
             self.untoggle_optimizer(opt_d)
 
             loss_dict = {
-                "MS-STFT": loss_stft.item(),
+                "STFT": loss_stft.item(),
                 "Generator Adversarial": loss_adv.item(),
                 "Feature Matching": loss_feat.item(),
                 "Discriminator Adversarial": loss_D.item(),

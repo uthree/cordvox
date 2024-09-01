@@ -1,6 +1,6 @@
 {
     "preprocess": {
-        "length": 24000,
+        "length": 48000,
         "pitch_estimation": "fcpe",
         "sample_rate": 24000,
         "n_fft": 1920,

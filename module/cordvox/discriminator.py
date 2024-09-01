@@ -92,7 +92,7 @@ class MultiPeriodicDiscriminator(nn.Module):
 
 
 class DiscriminatorR(nn.Module):
-    def __init__(self, resolution=128, channels=32, num_layers=4, use_spectral_norm=True):
+    def __init__(self, resolution=128, channels=32, num_layers=4, use_spectral_norm=False):
         super().__init__()
         norm_f = nn.utils.parametrizations.spectral_norm if use_spectral_norm else nn.utils.parametrizations.weight_norm
         self.convs = nn.ModuleList([norm_f(nn.Conv2d(1, channels, (7, 3), (1, 1), (3, 1)))])
