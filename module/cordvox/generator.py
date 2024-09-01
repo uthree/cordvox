@@ -16,123 +16,6 @@ def init_weights(m, mean=0.0, std=0.01):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
         m.weight.data.normal_(mean, std)
-
-
-class HarmonicOscillator(nn.Module):
-    def __init__(
-            self,
-            sample_rate,
-            frame_size,
-            num_harmonics=8,
-            noise_scale=0.03
-        ):
-        super().__init__()
-        self.sample_rate = sample_rate
-        self.frame_size = frame_size
-        self.num_harmonics = num_harmonics
-        self.noise_scale = noise_scale
-
-        self.weights = nn.Parameter(torch.ones(1, num_harmonics, 1))
-
-    def forward(self, f0, uv):
-        '''
-        Args:
-            f0: fundamental frequency shape=[N, 1, L]
-            uv: unvoiced=0 / voiced=1 flag, shape=[N, 1, L]
-        Output
-            shape=[N, 1, L * frame_size]
-        '''
-        with torch.no_grad():
-            f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
-            voiced_mask = F.interpolate(uv, scale_factor=self.frame_size)
-            mul = (torch.arange(self.num_harmonics, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
-            fs = f0 * mul
-            integrated = torch.cumsum(fs / self.sample_rate, dim=2)
-            rad = 2 * math.pi * (integrated % 1)
-            noise = torch.randn_like(rad)
-            harmonics = torch.sin(rad) * voiced_mask + noise * self.noise_scale
-            voiced_part = harmonics + noise * self.noise_scale
-            unvoiced_part = noise * 0.333
-            source = voiced_part * voiced_mask + unvoiced_part * (1 - voiced_mask)
-            source = (source * F.normalize(self.weights, p=2.0, dim=1)).sum(dim=1, keepdim=True)
-        return source
-    
-
-class ImpulseOscillator(nn.Module):
-    def __init__(
-            self,
-            sample_rate,
-            frame_size,
-        ):
-        super().__init__()
-        self.sample_rate = sample_rate
-        self.frame_size = frame_size
-
-    def forward(self, f0, uv):
-        '''
-        Args:
-            f0: fundamental frequency shape=[N, 1, L]
-            uv: unvoiced=0 / voiced=1 flag, shape=[N, 1, L]
-        Output
-            shape=[N, 1, L * frame_size]
-        '''
-        with torch.no_grad():
-            f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
-            voiced_mask = F.interpolate(uv, scale_factor=self.frame_size)
-            rad = torch.cumsum(-f0 / self.sample_rate, dim=2)
-            sawtooth = rad % 1.0
-            impluse = sawtooth - sawtooth.roll(1, dims=(2))
-            noise = torch.randn_like(impluse) * 0.333
-            source = impluse * voiced_mask + noise * (1 - voiced_mask)
-        return source
-
-
-class CyclicNoiseOscillator(nn.Module):
-    def __init__(
-            self,
-            sample_rate,
-            frame_size,
-            base_frequency=440.0,
-            beta=0.78
-        ):
-        super().__init__()
-        self.sample_rate = sample_rate
-        self.frame_size = frame_size
-        self.base_frequency = base_frequency
-        self.beta = beta
-
-        self.kernel_size = int(4.6 * self.sample_rate / self.base_frequency)
-        self.pad_size = self.kernel_size - 1
-
-    def generate_kernel(self):
-        t = torch.arange(0, self.kernel_size)[None, None, :]
-        decay = torch.exp(-t * self.base_frequency / self.beta / self.sample_rate)
-        noise = torch.randn_like(decay)
-        kernel = noise * decay
-        return kernel
-
-    def forward(self, f0, uv):
-        '''
-        Args:
-            f0: fundamental frequency shape=[N, 1, L]
-            uv: unvoiced=0 / voiced=1 flag, shape=[N, 1, L]
-        Output
-            shape=[N, 1, L * frame_size]
-        '''
-        with torch.no_grad():
-            f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
-            N = f0.shape[0]
-            L = f0.shape[2]
-            voiced_mask = F.interpolate(uv, scale_factor=self.frame_size)
-            rad = torch.cumsum(-f0 / self.sample_rate, dim=2)
-            sawtooth = rad % 1.0
-            impluse = sawtooth - sawtooth.roll(1, dims=(2))
-            noise = torch.randn(N, 1, L, device=f0.device)
-            kernel = self.generate_kernel().to(f0.device)
-            impluse = F.pad(impluse, (0, self.pad_size))
-            cyclic_noise = F.conv1d(impluse, kernel)
-            source = cyclic_noise * voiced_mask + (1 - voiced_mask) * noise
-        return source
     
 
 class ResBlock1(nn.Module):
@@ -167,22 +50,42 @@ class ResBlock2(nn.Module):
             xt = c1(xt)
             x = x + xt
         return x
+    
+
+class FiLM(nn.Module):
+    def __init__(self, channels, condition_channels):
+        super().__init__()
+        self.to_beta = weight_norm(nn.Conv1d(condition_channels, channels, 1))
+        self.to_gamma = weight_norm(nn.Conv1d(condition_channels, channels, 1))
+
+    def forward(self, x, c):
+        x = x * self.to_gamma(c) + self.to_beta(c)
+        return x
 
 
-class FilterNet(nn.Module):
+class Generator(nn.Module):
     def __init__(
             self,
             n_mels=80,
+            sample_rate=24000,
+            num_harmonics=32,
             upsample_initial_channels=512,
             resblock_type="1",
             resblock_kernel_sizes=[3, 7, 11],
             resblock_dilations=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
             upsample_kernel_sizes=[24, 20, 4, 4],
-            upsample_rates=[12, 10, 2, 2]
+            upsample_rates=[12, 10, 2, 2],
+            output_channels=1
         ):
         super().__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
+        self.sample_rate = sample_rate
+        self.num_harmonics = num_harmonics
+        self.frame_size = 1
+        
+        for u in upsample_rates:
+            self.frame_size = self.frame_size * u
 
         if resblock_type == "1":
             resblock = ResBlock1
@@ -192,33 +95,53 @@ class FilterNet(nn.Module):
             raise "invalid resblock type"
 
         self.conv_pre = weight_norm(nn.Conv1d(n_mels, upsample_initial_channels, 7, 1, 3))
-        self.source_convs = nn.ModuleList()
+        self.films = nn.ModuleList()
         self.ups = nn.ModuleList()
+        downs = []
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
             c1 = upsample_initial_channels//(2**i)
             c2 = upsample_initial_channels//(2**(i+1))
             p = (k-u)//2
-            if i == len(upsample_rates) - 1:
-                self.source_convs.append(weight_norm(nn.Conv1d(1, c2, 7, 1, 3)))
-            else:
-                up_prod = int(np.prod(upsample_rates[i+1:]))
-                self.source_convs.append(weight_norm(nn.Conv1d(1, c2, up_prod * 2, up_prod, up_prod // 2)))
+            downs.append(weight_norm(nn.Conv1d(c2, c1, k, u, p)))
+            self.films.append(FiLM(c1, c1))
             self.ups.append(weight_norm(nn.ConvTranspose1d(c1, c2, k, u, p)))
+        downs.append(weight_norm(nn.Conv1d(num_harmonics, c2, 7, 1, 3)))
+        self.films.append(FiLM(c2, c2))
+        self.downs = nn.ModuleList(list(reversed(downs)))
         
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
             ch = upsample_initial_channels//(2**(i+1))
             for j, (k, d) in enumerate(zip(resblock_kernel_sizes, resblock_dilations)):
                 self.resblocks.append(resblock(ch, k, d))
-        self.conv_post = weight_norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
+        self.conv_post = weight_norm(nn.Conv1d(ch, output_channels, 7, 1, padding=3))
 
         self.apply(init_weights)
 
 
-    def forward(self, x, source):
+    def forward(self, x, f0):
+        # oscillator
+        uv = (f0 > 0.0).to(f0.dtype)
+        f0 = F.interpolate(f0, scale_factor=self.frame_size, mode='linear')
+        uv = (F.interpolate(uv, scale_factor=self.frame_size, mode='linear') > 0.99).to(f0.dtype)
+        mul = (torch.arange(self.num_harmonics, device=f0.device) + 1).unsqueeze(0).unsqueeze(2)
+        integrated = torch.cumsum(f0 / self.sample_rate, dim=2) * mul
+        rad = 2 * torch.pi * (integrated % 1)
+        s = torch.sin(rad) * uv
+
+        # downsamples
+        source_signals = []
+        for i in range(len(self.downs)):
+            s = self.downs[i](s)
+            s = F.leaky_relu(s, 0.1)
+            source_signals.append(s)
+        source_signals = list(reversed(source_signals))
+
+        # upsamples
         x = self.conv_pre(x)
         for i in range(self.num_upsamples):
-            x = self.ups[i](x) + self.source_convs[i](source)
+            x = self.films[i](source_signals[i], x)
+            x = self.ups[i](x)
             x = F.leaky_relu(x, 0.1)
             xs = None
             for j in range(self.num_kernels):
@@ -227,28 +150,8 @@ class FilterNet(nn.Module):
                 else:
                     xs += self.resblocks[i*self.num_kernels+j](x)
             x = xs / self.num_kernels
+        x = self.films[-1](x, source_signals[-1])
         x = F.leaky_relu(x, 0.1)
         x = self.conv_post(x)
         x = torch.tanh(x)
         return x
-    
-
-class Generator(nn.Module):
-    def __init__(self, source, filter, source_type="harmonic"):
-        super().__init__()
-        if source_type == "harmonic":
-            SourceNet = HarmonicOscillator
-        elif source_type == "cyclic_noise":
-            SourceNet = CyclicNoiseOscillator
-        elif source_type == "impulse":
-            SourceNet = ImpulseOscillator
-        else:
-            raise "Invalid source_type"
-        self.source_net = SourceNet(**source)
-        self.filter_net = FilterNet(**filter)
-
-    def forward(self, x, f0):
-        uv = (f0 > 0).to(f0.dtype)
-        source = self.source_net(f0, uv)
-        output = self.filter_net(x, source)
-        return output
