@@ -7,7 +7,7 @@ def safe_log(x, eps=1e-6):
     return torch.log(x + eps)
 
 
-def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[64, 128, 256, 512]):
+def multiscale_stft_loss(x: torch.Tensor, y: torch.Tensor, scales=[128, 256, 512]):
     '''
     shapes:
         x: [N, Waveform Length]

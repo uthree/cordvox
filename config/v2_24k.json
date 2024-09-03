@@ -25,7 +25,7 @@
     "model": {
         "generator": {
             "sample_rate": 24000,
-            "num_harmonics": 8,
+            "num_harmonics": 1,
             "n_mels": 80,
             "upsample_initial_channels": 128,
             "resblock_type": "1",
